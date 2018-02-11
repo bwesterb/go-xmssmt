@@ -2,249 +2,265 @@ package xmssmt
 
 import (
 	"fmt"
+	"reflect"
 )
+
+type HashFunc uint32
 
 const (
-	SHA2  = 0
-	SHAKE = 1
+	SHA2  HashFunc = 0
+	SHAKE          = 1
 )
 
-// Paramaters of an XMSSMT instance.
-// Create one using ParamsFromName or ParamsFromOid
+// Parameters of an XMSS[MT] instance
 type Params struct {
-	MT           bool   // true for XMSSMT; false for XMSS
-	Oid          uint32 // OID of this configuration
-	Func         uint32 // hash function, either SHA2 or SHAKE
-	N            uint32 // length of hash
-	WotsW        uint16 // WOTS+ Winternitz parameter
-	WotsLogW     uint8  // logarithm of the Winternitz parameter
-	WotsLen1     uint32 // WOTS+ chains for message
-	WotsLen2     uint32 // WOTS+ chains for checksum
-	WotsLen      uint32 // total number of WOTS+ chains
-	WotsSigBytes uint32 // length of WOTS+ signature
-	FullHeight   uint32 // full height of the hypertree
-	TreeHeight   uint32 // height of a subtree
-	D            uint32 // number of subtrees
-	IndexBytes   uint32 // size of an index
-	SigBytes     uint32 // size of signature
-	PkBytes      uint32 // size of public key
-	SkBytes      uint32 // size of secret key
+	Func       HashFunc // which has function to use
+	N          uint32   // security parameter: influences length of hashes
+	FullHeight uint32   // full height of tree
+	D          uint32   // number of subtrees; 1 for XMSS, >1 for XMSSMT
+
+	// WOTS+ Winternitz parameter.  Only 8, 16 and 256 are supported.
+	WotsW uint16
 }
 
-// Return parameters for the given XMSS[MT] algorithm name (and nil if the
-// algorithm name is unknown).
+// Entry in the registry of algorithms
+type regEntry struct {
+	name   string // name, eg. XMSSMT-SHA2_20/2_256
+	mt     bool   // whether its XMSSMT (instead of XMSS)
+	oid    uint32 // oid of the algorithm
+	params Params // parameters of the algorithm
+}
+
+// Registry of named XMSS[MT] algorithms
+var registry []regEntry = []regEntry{
+	regEntry{"XMSSMT-SHA2_20/2_256", true, 0x00000001,
+		Params{SHA2, 32, 20, 2, 16}},
+	regEntry{"XMSSMT-SHA2_20/4_256", true, 0x00000002,
+		Params{SHA2, 32, 20, 4, 16}},
+	regEntry{"XMSSMT-SHA2_40/2_256", true, 0x00000003,
+		Params{SHA2, 32, 40, 2, 16}},
+	regEntry{"XMSSMT-SHA2_40/4_256", true, 0x00000004,
+		Params{SHA2, 32, 40, 4, 16}},
+	regEntry{"XMSSMT-SHA2_40/8_256", true, 0x00000005,
+		Params{SHA2, 32, 40, 8, 16}},
+	regEntry{"XMSSMT-SHA2_60/3_256", true, 0x00000006,
+		Params{SHA2, 32, 60, 3, 16}},
+	regEntry{"XMSSMT-SHA2_60/6_256", true, 0x00000007,
+		Params{SHA2, 32, 60, 6, 16}},
+	regEntry{"XMSSMT-SHA2_60/12_256", true, 0x00000008,
+		Params{SHA2, 32, 60, 12, 16}},
+
+	regEntry{"XMSSMT-SHA2_20/2_512", true, 0x00000009,
+		Params{SHA2, 64, 20, 2, 16}},
+	regEntry{"XMSSMT-SHA2_20/4_512", true, 0x0000000a,
+		Params{SHA2, 64, 20, 4, 16}},
+	regEntry{"XMSSMT-SHA2_40/2_512", true, 0x0000000b,
+		Params{SHA2, 64, 40, 2, 16}},
+	regEntry{"XMSSMT-SHA2_40/4_512", true, 0x0000000c,
+		Params{SHA2, 64, 40, 4, 16}},
+	regEntry{"XMSSMT-SHA2_40/8_512", true, 0x0000000d,
+		Params{SHA2, 64, 40, 8, 16}},
+	regEntry{"XMSSMT-SHA2_60/3_512", true, 0x0000000e,
+		Params{SHA2, 64, 60, 3, 16}},
+	regEntry{"XMSSMT-SHA2_60/6_512", true, 0x0000000f,
+		Params{SHA2, 64, 60, 6, 16}},
+	regEntry{"XMSSMT-SHA2_60/12_512", true, 0x00000010,
+		Params{SHA2, 64, 60, 12, 16}},
+
+	regEntry{"XMSSMT-SHAKE_20/2_256", true, 0x00000011,
+		Params{SHAKE, 32, 20, 2, 16}},
+	regEntry{"XMSSMT-SHAKE_20/4_256", true, 0x00000012,
+		Params{SHAKE, 32, 20, 4, 16}},
+	regEntry{"XMSSMT-SHAKE_40/2_256", true, 0x00000013,
+		Params{SHAKE, 32, 40, 2, 16}},
+	regEntry{"XMSSMT-SHAKE_40/4_256", true, 0x00000014,
+		Params{SHAKE, 32, 40, 4, 16}},
+	regEntry{"XMSSMT-SHAKE_40/8_256", true, 0x00000015,
+		Params{SHAKE, 32, 40, 8, 16}},
+	regEntry{"XMSSMT-SHAKE_60/3_256", true, 0x00000016,
+		Params{SHAKE, 32, 60, 3, 16}},
+	regEntry{"XMSSMT-SHAKE_60/6_256", true, 0x00000017,
+		Params{SHAKE, 32, 60, 6, 16}},
+	regEntry{"XMSSMT-SHAKE_60/12_256", true, 0x00000018,
+		Params{SHAKE, 32, 60, 12, 16}},
+
+	regEntry{"XMSSMT-SHAKE_20/2_512", true, 0x00000019,
+		Params{SHAKE, 64, 20, 2, 16}},
+	regEntry{"XMSSMT-SHAKE_20/4_512", true, 0x0000001a,
+		Params{SHAKE, 64, 20, 4, 16}},
+	regEntry{"XMSSMT-SHAKE_40/2_512", true, 0x0000001b,
+		Params{SHAKE, 64, 40, 2, 16}},
+	regEntry{"XMSSMT-SHAKE_40/4_512", true, 0x0000001c,
+		Params{SHAKE, 64, 40, 4, 16}},
+	regEntry{"XMSSMT-SHAKE_40/8_512", true, 0x0000001d,
+		Params{SHAKE, 64, 40, 8, 16}},
+	regEntry{"XMSSMT-SHAKE_60/3_512", true, 0x0000001e,
+		Params{SHAKE, 64, 60, 3, 16}},
+	regEntry{"XMSSMT-SHAKE_60/6_512", true, 0x0000001f,
+		Params{SHAKE, 64, 60, 6, 16}},
+	regEntry{"XMSSMT-SHAKE_60/12_512", true, 0x00000020,
+		Params{SHAKE, 64, 60, 12, 16}},
+
+	regEntry{"XMSS-SHA2_10_256", false, 0x00000001,
+		Params{SHA2, 32, 10, 1, 16}},
+	regEntry{"XMSS-SHA2_16_256", false, 0x00000002,
+		Params{SHA2, 32, 16, 1, 16}},
+	regEntry{"XMSS-SHA2_20_256", false, 0x00000003,
+		Params{SHA2, 32, 20, 1, 16}},
+	regEntry{"XMSS-SHA2_10_512", false, 0x00000004,
+		Params{SHA2, 64, 10, 1, 16}},
+	regEntry{"XMSS-SHA2_16_512", false, 0x00000005,
+		Params{SHA2, 64, 16, 1, 16}},
+	regEntry{"XMSS-SHA2_20_512", false, 0x00000006,
+		Params{SHA2, 64, 20, 1, 16}},
+
+	regEntry{"XMSS-SHAKE_10_256", false, 0x00000007,
+		Params{SHAKE, 32, 10, 1, 16}},
+	regEntry{"XMSS-SHAKE_16_256", false, 0x00000008,
+		Params{SHAKE, 32, 16, 1, 16}},
+	regEntry{"XMSS-SHAKE_20_256", false, 0x00000009,
+		Params{SHAKE, 32, 20, 1, 16}},
+	regEntry{"XMSS-SHAKE_10_512", false, 0x0000000a,
+		Params{SHAKE, 64, 10, 1, 16}},
+	regEntry{"XMSS-SHAKE_16_512", false, 0x0000000b,
+		Params{SHAKE, 64, 16, 1, 16}},
+	regEntry{"XMSS-SHAKE_20_512", false, 0x0000000c,
+		Params{SHAKE, 64, 20, 1, 16}},
+}
+
+var registryNameLut map[string]regEntry
+var registryOidLut map[uint32]regEntry
+var registryOidMTLut map[uint32]regEntry
+
+// Initializes algorithm lookup tables.
+func init() {
+	registryNameLut = make(map[string]regEntry)
+	registryOidLut = make(map[uint32]regEntry)
+	registryOidMTLut = make(map[uint32]regEntry)
+	for _, entry := range registry {
+		registryNameLut[entry.name] = entry
+		if entry.mt {
+			registryOidMTLut[entry.oid] = entry
+		} else {
+			registryOidLut[entry.oid] = entry
+		}
+	}
+}
+
+// XMSS[MT] instance.
+// Create one using NewContextFromName, NewContextFromOid or NewContext.
+type Context struct {
+	p            Params  // parameters.
+	mt           bool    // true for XMSSMT; false for XMSS
+	oid          uint32  // OID of this configuration, if it has any
+	wotsLogW     uint8   // logarithm of the Winternitz parameter
+	wotsLen1     uint32  // WOTS+ chains for message
+	wotsLen2     uint32  // WOTS+ chains for checksum
+	wotsLen      uint32  // total number of WOTS+ chains
+	wotsSigBytes uint32  // length of WOTS+ signature
+	treeHeight   uint32  // height of a subtree
+	indexBytes   uint32  // size of an index
+	sigBytes     uint32  // size of signature
+	pkBytes      uint32  // size of public key
+	skBytes      uint32  // size of secret key
+	name         *string // name of algorithm
+}
+
+// Returns paramters for the named XMSS[MT] instance (and nil if there is no
+// such algorithm).
 func ParamsFromName(name string) *Params {
-	mt, oid := OidFromName(name)
-	if oid == 0 {
+	entry, ok := registryNameLut[name]
+	if ok {
+		return &entry.params
+	} else {
 		return nil
 	}
-	return ParamsFromOid(mt, oid)
 }
 
-// Return parameters for the given XMSS[MT] OID  (and nil if OID is unknown).
-func ParamsFromOid(mt bool, oid uint32) *Params {
-	var params Params
+// Return new context for the given XMSS[MT] oid (and nil if it's unknown).
+func NewContextFromOid(mt bool, oid uint32) *Context {
+	var lut map[uint32]regEntry
 	if mt {
-		if oid < 0 || oid > 0x20 {
-			return nil
-		}
-
-		if oid <= 0x10 {
-			params.Func = SHA2
-		} else {
-			params.Func = SHAKE
-		}
-
-		if (oid <= 0x8) || ((0x11 <= oid) && (oid <= 0x18)) {
-			params.N = 32
-		} else {
-			params.N = 64
-		}
-
-		if (oid == 0x1) || (oid == 0x2) || (oid == 0x9) || (oid == 0xa) ||
-			(oid == 0x11) || (oid == 0x12) || (oid == 0x19) || (oid == 0x1a) {
-			params.FullHeight = 20
-		} else if (oid == 0x3) || (oid == 0x4) || (oid == 0x5) ||
-			(oid == 0xb) || (oid == 0xc) || (oid == 0xd) ||
-			(oid == 0x13) || (oid == 0x14) || (oid == 0x15) ||
-			(oid == 0x1b) || (oid == 0x1c) || (oid == 0x1d) {
-			params.FullHeight = 30
-		} else {
-			params.FullHeight = 60
-		}
-
-		if (oid == 0x1) || (oid == 0x3) || (oid == 0x9) ||
-			(oid == 0xb) || (oid == 0x11) || (oid == 0x13) ||
-			(oid == 0x19) || (oid == 0x1b) {
-			params.D = 2
-		} else if (oid == 0x2) || (oid == 0x4) || (oid == 0xa) ||
-			(oid == 0xc) || (oid == 0x12) || (oid == 0x14) ||
-			(oid == 0x1a) || (oid == 0x1c) {
-			params.D = 4
-		} else if (oid == 0x5) || (oid == 0xd) ||
-			(oid == 0x15) || (oid == 0x1d) {
-			params.D = 8
-		} else if (oid == 0x6) || (oid == 0xe) ||
-			(oid == 0x16) || (oid == 0x1e) {
-			params.D = 3
-		} else if (oid == 0x7) || (oid == 0xf) ||
-			(oid == 0x17) || (oid == 0x1f) {
-			params.D = 6
-		} else {
-			params.D = 12
-		}
-
-		params.IndexBytes = (params.FullHeight + 7) / 8
-	} else { // !mt
-		if oid < 0x1 || 0xc < oid {
-			return nil
-		}
-
-		if oid <= 0x6 {
-			params.Func = SHA2
-		} else {
-			params.Func = SHAKE
-		}
-
-		if (oid == 0x1) || (oid == 0x2) || (oid == 0x3) ||
-			(oid == 0x7) || (oid == 0x8) || (oid == 0x9) {
-			params.N = 32
-		} else {
-			params.N = 64
-		}
-
-		if (oid == 0x1) || (oid == 0x4) || (oid == 0x7) || (oid == 0xa) {
-			params.FullHeight = 10
-		} else if (oid == 0x2) || (oid == 0x5) || (oid == 0x8) || (oid == 0xb) {
-			params.FullHeight = 16
-		} else {
-			params.FullHeight = 20
-		}
-
-		params.D = 1
-		params.IndexBytes = 4
+		lut = registryOidMTLut
+	} else {
+		lut = registryOidLut
 	}
-
-	params.Oid = oid
-	params.MT = mt
-	params.TreeHeight = params.FullHeight / params.D
-	params.WotsW = 16
-	params.WotsLogW = 4
-	params.WotsLen1 = 8 * params.N / uint32(params.WotsLogW)
-	params.WotsLen2 = 3
-	params.WotsLen = params.WotsLen1 + params.WotsLen2
-	params.WotsSigBytes = params.WotsLen * params.N
-	params.SigBytes = (params.IndexBytes + params.N +
-		params.D*params.WotsSigBytes + params.FullHeight*
-		params.N)
-	params.PkBytes = 2 * params.N
-	params.SkBytes = params.IndexBytes + 4*params.N
-
-	return &params
-}
-
-// Return algorithm OID and whether it's multitree from the algorithm name.
-// For instance XMSSMT-SHA2_20/2_256 is multitree and has OID 0x00000001.
-// Returns OID 0 if the name is unknown.
-func OidFromName(s string) (mt bool, oid uint32) {
-	switch s {
-	case "XMSSMT-SHA2_20/2_256":
-		return true, 0x00000001
-	case "XMSSMT-SHA2_20/4_256":
-		return true, 0x00000002
-	case "XMSSMT-SHA2_40/2_256":
-		return true, 0x00000003
-	case "XMSSMT-SHA2_40/4_256":
-		return true, 0x00000004
-	case "XMSSMT-SHA2_40/8_256":
-		return true, 0x00000005
-	case "XMSSMT-SHA2_60/3_256":
-		return true, 0x00000006
-	case "XMSSMT-SHA2_60/6_256":
-		return true, 0x00000007
-	case "XMSSMT-SHA2_60/12_256":
-		return true, 0x00000008
-	case "XMSSMT-SHA2_20/2_512":
-		return true, 0x00000009
-	case "XMSSMT-SHA2_20/4_512":
-		return true, 0x0000000a
-	case "XMSSMT-SHA2_40/2_512":
-		return true, 0x0000000b
-	case "XMSSMT-SHA2_40/4_512":
-		return true, 0x0000000c
-	case "XMSSMT-SHA2_40/8_512":
-		return true, 0x0000000d
-	case "XMSSMT-SHA2_60/3_512":
-		return true, 0x0000000e
-	case "XMSSMT-SHA2_60/6_512":
-		return true, 0x0000000f
-	case "XMSSMT-SHA2_60/12_512":
-		return true, 0x00000010
-	case "XMSSMT-SHAKE_20/2_256":
-		return true, 0x00000011
-	case "XMSSMT-SHAKE_20/4_256":
-		return true, 0x00000012
-	case "XMSSMT-SHAKE_40/2_256":
-		return true, 0x00000013
-	case "XMSSMT-SHAKE_40/4_256":
-		return true, 0x00000014
-	case "XMSSMT-SHAKE_40/8_256":
-		return true, 0x00000015
-	case "XMSSMT-SHAKE_60/3_256":
-		return true, 0x00000016
-	case "XMSSMT-SHAKE_60/6_256":
-		return true, 0x00000017
-	case "XMSSMT-SHAKE_60/12_256":
-		return true, 0x00000018
-	case "XMSSMT-SHAKE_20/2_512":
-		return true, 0x00000019
-	case "XMSSMT-SHAKE_20/4_512":
-		return true, 0x0000001a
-	case "XMSSMT-SHAKE_40/2_512":
-		return true, 0x0000001b
-	case "XMSSMT-SHAKE_40/4_512":
-		return true, 0x0000001c
-	case "XMSSMT-SHAKE_40/8_512":
-		return true, 0x0000001d
-	case "XMSSMT-SHAKE_60/3_512":
-		return true, 0x0000001e
-	case "XMSSMT-SHAKE_60/6_512":
-		return true, 0x0000001f
-	case "XMSSMT-SHAKE_60/12_512":
-		return true, 0x00000020
-	case "XMSS-SHA2_10_256":
-		return false, 0x00000001
-	case "XMSS-SHA2_16_256":
-		return false, 0x00000002
-	case "XMSS-SHA2_20_256":
-		return false, 0x00000003
-	case "XMSS-SHA2_10_512":
-		return false, 0x00000004
-	case "XMSS-SHA2_16_512":
-		return false, 0x00000005
-	case "XMSS-SHA2_20_512":
-		return false, 0x00000006
-	case "XMSS-SHAKE_10_256":
-		return false, 0x00000007
-	case "XMSS-SHAKE_16_256":
-		return false, 0x00000008
-	case "XMSS-SHAKE_20_256":
-		return false, 0x00000009
-	case "XMSS-SHAKE_10_512":
-		return false, 0x0000000a
-	case "XMSS-SHAKE_16_512":
-		return false, 0x0000000b
-	case "XMSS-SHAKE_20_512":
-		return false, 0x0000000c
-	default:
-		return false, 0
+	entry, ok := lut[oid]
+	if ok {
+		ctx, _ := NewContext(entry.params)
+		return ctx
+	} else {
+		return nil
 	}
 }
 
-func (params *Params) Name() string {
-	// TODO return actual name
-	if params.MT {
-		return fmt.Sprintf("XMSSMT oid %s", params.Oid)
+// Return new context for the given XMSS[MT] algorithm name (and nil if the
+// algorithm name is unknown).
+func NewContextFromName(name string) *Context {
+	params := ParamsFromName(name)
+	if params == nil {
+		return nil
 	}
-	return fmt.Sprintf("XMSS oid %d", params.Oid)
+	ctx, _ := NewContext(*params)
+	return ctx
+}
+
+// Creates a new context.
+func NewContext(params Params) (ctx *Context, err error) {
+	ctx = new(Context)
+	ctx.p = params
+	ctx.mt = (ctx.p.D == 1)
+
+	if params.FullHeight%params.D != 0 {
+		return nil, fmt.Errorf("D does not divide FullHeight")
+	}
+
+	ctx.treeHeight = params.FullHeight / params.D
+
+	if params.WotsW != 16 {
+		return nil, fmt.Errorf("Only WotsW=16 is supported at the moment")
+	}
+
+	if ctx.mt {
+		ctx.indexBytes = (params.FullHeight + 7) / 8
+	} else {
+		ctx.indexBytes = 4
+	}
+
+	ctx.wotsLogW = 4
+	ctx.wotsLen1 = 8 * params.N / uint32(ctx.wotsLogW)
+	ctx.wotsLen2 = 3
+	ctx.wotsLen = ctx.wotsLen1 + ctx.wotsLen2
+	ctx.wotsSigBytes = ctx.wotsLen * params.N
+	ctx.sigBytes = (ctx.indexBytes + params.N +
+		params.D*ctx.wotsSigBytes + params.FullHeight*params.N)
+	ctx.pkBytes = 2 * params.N
+	ctx.skBytes = ctx.indexBytes + 4*params.N
+
+	return
+}
+
+// Returns the name of the XMSSMT instance and an empty string if it has
+// no name.
+func (ctx *Context) Name() string {
+	if ctx.name != nil {
+		for _, entry := range registry {
+			if reflect.DeepEqual(entry.params, ctx.p) {
+				ctx.name = &entry.name
+			}
+		}
+	}
+	if ctx.name != nil {
+		return *ctx.name
+	}
+	return ""
+}
+
+// List all named XMSS[MT] instances
+func ListNames() (names []string) {
+	names = make([]string, len(registry))
+	for i, entry := range registry {
+		names[i] = entry.name
+	}
+	return
 }
