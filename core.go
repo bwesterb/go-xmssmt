@@ -39,9 +39,8 @@ func (mt *merkleTree) Node(height, index uint32) []byte {
 
 // Compute a subtree by expanding the secret seed into WOTS+ keypairs
 // and then hashing up.
-func (ctx *Context) genSubTree(skSeed, pubSeed []byte,
+func (ctx *Context) genSubTree(pad scratchPad, skSeed, pubSeed []byte,
 	addr address) merkleTree {
-	// TODO parallelize
 	mt := newMerkleTree(ctx.treeHeight+1, ctx.p.N)
 
 	var otsAddr, lTreeAddr, nodeAddr address
@@ -60,7 +59,8 @@ func (ctx *Context) genSubTree(skSeed, pubSeed []byte,
 			lTreeAddr.setLTree(idx)
 			otsAddr.setOTS(idx)
 			copy(mt.Node(0, idx),
-				ctx.genLeaf(skSeed, pubSeed, lTreeAddr, otsAddr))
+				ctx.genLeaf(pad, skSeed, pubSeed,
+					lTreeAddr, otsAddr))
 		}
 	} else {
 		wg := &sync.WaitGroup{}
@@ -73,6 +73,7 @@ func (ctx *Context) genSubTree(skSeed, pubSeed []byte,
 		wg.Add(threads)
 		for i := 0; i < threads; i++ {
 			go func(lTreeAddr, otsAddr address) {
+				pad := ctx.newScratchPad()
 				var ourIdx uint32
 				for {
 					mux.Lock()
@@ -90,7 +91,7 @@ func (ctx *Context) genSubTree(skSeed, pubSeed []byte,
 						lTreeAddr.setLTree(ourIdx)
 						otsAddr.setOTS(ourIdx)
 						copy(mt.Node(0, ourIdx),
-							ctx.genLeaf(skSeed, pubSeed, lTreeAddr, otsAddr))
+							ctx.genLeaf(pad, skSeed, pubSeed, lTreeAddr, otsAddr))
 					}
 				}
 				wg.Done()
@@ -106,7 +107,7 @@ func (ctx *Context) genSubTree(skSeed, pubSeed []byte,
 		nodeAddr.setTreeHeight(height - 1)
 		for idx = 0; idx < (1 << (ctx.treeHeight - height)); idx++ {
 			nodeAddr.setTreeIndex(idx)
-			ctx.hInto(mt.Node(height-1, 2*idx),
+			ctx.hInto(pad, mt.Node(height-1, 2*idx),
 				mt.Node(height-1, 2*idx+1),
 				pubSeed, nodeAddr, mt.Node(height, idx))
 		}
@@ -117,7 +118,8 @@ func (ctx *Context) genSubTree(skSeed, pubSeed []byte,
 
 // Computes the leaf node associated to a WOTS+ public key.
 // Note that the WOTS+ public key is destroyed.
-func (ctx *Context) lTree(wotsPk, pubSeed []byte, addr address) []byte {
+func (ctx *Context) lTree(pad scratchPad, wotsPk, pubSeed []byte,
+	addr address) []byte {
 	var height uint32 = 0
 	var l uint32 = ctx.wotsLen
 	for l > 1 {
@@ -126,7 +128,7 @@ func (ctx *Context) lTree(wotsPk, pubSeed []byte, addr address) []byte {
 		var i uint32
 		for i = 0; i < parentNodes; i++ {
 			addr.setTreeIndex(i)
-			ctx.hInto(wotsPk[2*i*ctx.p.N:(2*i+1)*ctx.p.N],
+			ctx.hInto(pad, wotsPk[2*i*ctx.p.N:(2*i+1)*ctx.p.N],
 				wotsPk[(2*i+1)*ctx.p.N:(2*i+2)*ctx.p.N],
 				pubSeed, addr,
 				wotsPk[i*ctx.p.N:(i+1)*ctx.p.N])
@@ -147,18 +149,19 @@ func (ctx *Context) lTree(wotsPk, pubSeed []byte, addr address) []byte {
 
 // Generate the leaf at the given address by first computing the
 // WOTS+ key pair and then using lTree.
-func (ctx *Context) genLeaf(skSeed, pubSeed []byte,
+func (ctx *Context) genLeaf(pad scratchPad, skSeed, pubSeed []byte,
 	lTreeAddr, otsAddr address) []byte {
-	seed := ctx.getWotsSeed(skSeed, otsAddr)
-	pk := ctx.wotsPkGen(seed, pubSeed, otsAddr)
-	return ctx.lTree(pk, pubSeed, lTreeAddr)
+	seed := ctx.getWotsSeed(pad, skSeed, otsAddr)
+	pk := ctx.wotsPkGen(pad, seed, pubSeed, otsAddr)
+	return ctx.lTree(pad, pk, pubSeed, lTreeAddr)
 }
 
 // Derive the seed for the WOTS+ key pair at the given address
 // from the secret key seed
-func (ctx *Context) getWotsSeed(skSeed []byte, addr address) []byte {
+func (ctx *Context) getWotsSeed(pad scratchPad, skSeed []byte,
+	addr address) []byte {
 	addr.setChain(0)
 	addr.setHash(0)
 	addr.setKeyAndMask(0)
-	return ctx.prfAddr(addr, skSeed)
+	return ctx.prfAddr(pad, addr, skSeed)
 }

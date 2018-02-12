@@ -56,23 +56,25 @@ func (ctx *Context) toBaseW(input []byte, output []uint8) {
 
 // Compute the (start + steps)th value in the WOTS+ chain, given
 // the start'th value in the chain.
-func (ctx *Context) wotsGenChainInto(in []byte, start, steps uint16,
+func (ctx *Context) wotsGenChainInto(pad scratchPad, in []byte,
+	start, steps uint16,
 	pubSeed []byte, addr address, out []byte) {
 	copy(out, in)
 	var i uint16
 	for i = start; i < (start+steps) && (i < ctx.p.WotsW); i++ {
 		addr.setHash(uint32(i))
-		ctx.fInto(out, pubSeed, addr, out)
+		ctx.fInto(pad, out, pubSeed, addr, out)
 	}
 }
 
 // Generate a WOTS+ public key from secret key seed.
-func (ctx *Context) wotsPkGen(seed, pubSeed []byte, addr address) []byte {
+func (ctx *Context) wotsPkGen(pad scratchPad, seed,
+	pubSeed []byte, addr address) []byte {
 	buf := ctx.wotsExpandSeed(seed)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
-		ctx.wotsGenChainInto(buf[ctx.p.N*i:ctx.p.N*(i+1)],
+		ctx.wotsGenChainInto(pad, buf[ctx.p.N*i:ctx.p.N*(i+1)],
 			0, ctx.p.WotsW-1, pubSeed, addr,
 			buf[ctx.p.N*i:ctx.p.N*(i+1)])
 	}
@@ -80,13 +82,14 @@ func (ctx *Context) wotsPkGen(seed, pubSeed []byte, addr address) []byte {
 }
 
 // Create a WOTS+ signature of a n-byte message
-func (ctx *Context) wotsSign(msg, seed, pubSeed []byte, addr address) []byte {
+func (ctx *Context) wotsSign(pad scratchPad, msg, seed, pubSeed []byte,
+	addr address) []byte {
 	lengths := ctx.wotsChainLengths(msg)
 	buf := ctx.wotsExpandSeed(seed)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
-		ctx.wotsGenChainInto(buf[ctx.p.N*i:ctx.p.N*(i+1)],
+		ctx.wotsGenChainInto(pad, buf[ctx.p.N*i:ctx.p.N*(i+1)],
 			0, uint16(lengths[i]), pubSeed, addr,
 			buf[ctx.p.N*i:ctx.p.N*(i+1)])
 	}
@@ -94,14 +97,14 @@ func (ctx *Context) wotsSign(msg, seed, pubSeed []byte, addr address) []byte {
 }
 
 // Returns the public key from a message and its WOTS+ signature.
-func (ctx *Context) wotsPkFromSig(sig, msg, pubSeed []byte,
+func (ctx *Context) wotsPkFromSig(pad scratchPad, sig, msg, pubSeed []byte,
 	addr address) []byte {
 	lengths := ctx.wotsChainLengths(msg)
 	buf := make([]byte, ctx.p.N*ctx.wotsLen)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
-		ctx.wotsGenChainInto(sig[ctx.p.N*i:ctx.p.N*(i+1)],
+		ctx.wotsGenChainInto(pad, sig[ctx.p.N*i:ctx.p.N*(i+1)],
 			uint16(lengths[i]), ctx.p.WotsW-1-uint16(lengths[i]),
 			pubSeed, addr,
 			buf[ctx.p.N*i:ctx.p.N*(i+1)])

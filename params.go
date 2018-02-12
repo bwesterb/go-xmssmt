@@ -170,6 +170,32 @@ type Context struct {
 	name         *string // name of algorithm
 }
 
+// A scratchpad used by a single goroutine to avoid memory allocation.
+type scratchPad struct {
+	buf []byte
+	n   uint32
+}
+
+func (pad scratchPad) fBuf() []byte {
+	return pad.buf[:3*pad.n]
+}
+
+func (pad scratchPad) hBuf() []byte {
+	return pad.buf[3*pad.n : 7*pad.n]
+}
+
+func (pad scratchPad) prfBuf() []byte {
+	return pad.buf[7*pad.n : 9*pad.n+32]
+}
+
+func (ctx *Context) newScratchPad() scratchPad {
+	n := ctx.p.N
+	return scratchPad{
+		buf: make([]byte, 9*n+32),
+		n:   n,
+	}
+}
+
 // Returns paramters for the named XMSS[MT] instance (and nil if there is no
 // such algorithm).
 func ParamsFromName(name string) *Params {

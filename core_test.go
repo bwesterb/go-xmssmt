@@ -18,7 +18,8 @@ func testLTree(ctx *Context, expect string, t *testing.T) {
 	for i := 0; i < 8; i++ {
 		addr[i] = 500000000 * uint32(i)
 	}
-	val := hex.EncodeToString(ctx.lTree(pk, pubSeed, address(addr)))
+	val := hex.EncodeToString(ctx.lTree(ctx.newScratchPad(), pk,
+		pubSeed, address(addr)))
 	if val != expect {
 		t.Errorf("%s ltree returned %s instead of %s", ctx.Name(), val, expect)
 	}
@@ -40,7 +41,8 @@ func testGetWotsSeed(ctx *Context, expect string, t *testing.T) {
 	for i := 0; i < 8; i++ {
 		addr[i] = 500000000 * uint32(i)
 	}
-	val := hex.EncodeToString(ctx.getWotsSeed(skSeed, addr))
+	val := hex.EncodeToString(ctx.getWotsSeed(ctx.newScratchPad(),
+		skSeed, addr))
 	if val != expect {
 		t.Errorf("%s getWotsSeed returned %s instead of %s", ctx.Name(), val, expect)
 	}
@@ -65,7 +67,8 @@ func testGenLeaf(ctx *Context, expect string, t *testing.T) {
 		otsAddr[i] = 500000000 * uint32(i)
 		lTreeAddr[i] = 400000000 * uint32(i)
 	}
-	val := hex.EncodeToString(ctx.genLeaf(skSeed, pubSeed, lTreeAddr, otsAddr))
+	val := hex.EncodeToString(ctx.genLeaf(ctx.newScratchPad(),
+		skSeed, pubSeed, lTreeAddr, otsAddr))
 	if val != expect {
 		t.Errorf("%s genLeaf returned %s instead of %s", ctx.Name(), val, expect)
 	}
@@ -89,7 +92,7 @@ func testGenSubTree(ctx *Context, expect string, t *testing.T) {
 	for i := 0; i < 8; i++ {
 		addr[i] = 500000000 * uint32(i)
 	}
-	mt := ctx.genSubTree(skSeed, pubSeed, addr)
+	mt := ctx.genSubTree(ctx.newScratchPad(), skSeed, pubSeed, addr)
 	val := hex.EncodeToString(mt.Node(ctx.treeHeight, 0))
 	if val != expect {
 		t.Errorf("%s genSubTree generated root %s instead of %s", ctx.Name(), val, expect)
@@ -151,6 +154,7 @@ func benchmarkGenLeaf(ctx *Context, b *testing.B) {
 	var lTreeAddr, otsAddr address
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ctx.genLeaf(skSeed, pubSeed, lTreeAddr, otsAddr)
+		ctx.genLeaf(ctx.newScratchPad(), skSeed, pubSeed,
+			lTreeAddr, otsAddr)
 	}
 }
