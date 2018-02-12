@@ -150,6 +150,10 @@ func init() {
 // XMSS[MT] instance.
 // Create one using NewContextFromName, NewContextFromOid or NewContext.
 type Context struct {
+	// Number of worker goroutines ("threads") to use for expensive operations.
+	// Will guess an appropriate number if set to 0.
+	Threads int
+
 	p            Params  // parameters.
 	mt           bool    // true for XMSSMT; false for XMSS
 	oid          uint32  // OID of this configuration, if it has any

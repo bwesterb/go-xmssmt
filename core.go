@@ -1,5 +1,10 @@
 package xmssmt
 
+import (
+	"runtime"
+	"sync"
+)
+
 // Represents a height t merkle tree of n-byte strings T[i,j] as
 //
 //                    T[t-1,0]
@@ -49,10 +54,50 @@ func (ctx *Context) genSubTree(skSeed, pubSeed []byte,
 
 	// First, compute the leafs
 	var idx uint32
-	for idx = 0; idx < (1 << ctx.treeHeight); idx++ {
-		lTreeAddr.setLTree(idx)
-		otsAddr.setOTS(idx)
-		copy(mt.Node(0, idx), ctx.genLeaf(skSeed, pubSeed, lTreeAddr, otsAddr))
+
+	if ctx.Threads == 1 {
+		for idx = 0; idx < (1 << ctx.treeHeight); idx++ {
+			lTreeAddr.setLTree(idx)
+			otsAddr.setOTS(idx)
+			copy(mt.Node(0, idx),
+				ctx.genLeaf(skSeed, pubSeed, lTreeAddr, otsAddr))
+		}
+	} else {
+		wg := &sync.WaitGroup{}
+		mux := &sync.Mutex{}
+		var perBatch uint32 = 32
+		threads := ctx.Threads
+		if threads == 0 {
+			threads = runtime.NumCPU()
+		}
+		wg.Add(threads)
+		for i := 0; i < threads; i++ {
+			go func(lTreeAddr, otsAddr address) {
+				var ourIdx uint32
+				for {
+					mux.Lock()
+					ourIdx = idx
+					idx += perBatch
+					mux.Unlock()
+					if ourIdx >= 1<<ctx.treeHeight {
+						break
+					}
+					ourEnd := ourIdx + perBatch
+					if ourEnd > 1<<ctx.treeHeight {
+						ourEnd = 1 << ctx.treeHeight
+					}
+					for ; ourIdx < ourEnd; ourIdx++ {
+						lTreeAddr.setLTree(ourIdx)
+						otsAddr.setOTS(ourIdx)
+						copy(mt.Node(0, ourIdx),
+							ctx.genLeaf(skSeed, pubSeed, lTreeAddr, otsAddr))
+					}
+				}
+				wg.Done()
+			}(lTreeAddr, otsAddr)
+		}
+
+		wg.Wait()
 	}
 
 	// Next, compute the internal nodes and root
