@@ -188,6 +188,7 @@ func NewContextFromOid(mt bool, oid uint32) *Context {
 	entry, ok := lut[oid]
 	if ok {
 		ctx, _ := NewContext(entry.params)
+		ctx.name = &entry.name
 		return ctx
 	} else {
 		return nil
@@ -202,6 +203,7 @@ func NewContextFromName(name string) *Context {
 		return nil
 	}
 	ctx, _ := NewContext(*params)
+	ctx.name = &name
 	return ctx
 }
 
@@ -243,10 +245,11 @@ func NewContext(params Params) (ctx *Context, err error) {
 // Returns the name of the XMSSMT instance and an empty string if it has
 // no name.
 func (ctx *Context) Name() string {
-	if ctx.name != nil {
+	if ctx.name == nil {
 		for _, entry := range registry {
 			if reflect.DeepEqual(entry.params, ctx.p) {
-				ctx.name = &entry.name
+				name2 := entry.name
+				ctx.name = &name2
 			}
 		}
 	}
@@ -254,6 +257,16 @@ func (ctx *Context) Name() string {
 		return *ctx.name
 	}
 	return ""
+}
+
+// Get parameters of an XMSS[MT] instance
+func (ctx *Context) Params() Params {
+	return ctx.p
+}
+
+// Returns the size of signatures of this XMSS[MT] instance
+func (ctx *Context) SignatureSize() uint32 {
+	return ctx.sigBytes
 }
 
 // List all named XMSS[MT] instances

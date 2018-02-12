@@ -1,5 +1,76 @@
 package xmssmt
 
+// Represents a height t merkle tree of n-byte strings T[i,j] as
+//
+//                    T[t-1,0]
+//                 /
+//               (...)        (...)
+//            /           \            \
+//         T[1,0]        T[1,1]  ...  T[1,2^(t-2)-1]
+//        /     \       /      \          \
+//     T[0,0] T[0,1] T[0,2]  T[0,3]  ...  T[0,2^(t-1)-1]
+//
+// as an (2^t-1)*n byte array.
+type merkleTree struct {
+	height uint32
+	n      uint32
+	buf    []byte
+}
+
+// Allocates memory for a merkle tree of n-byte strings of the given height.
+func newMerkleTree(height, n uint32) merkleTree {
+	return merkleTree{
+		height: height,
+		n:      n,
+		buf:    make([]byte, ((1<<height)-1)*n),
+	}
+}
+
+// Returns a slice to the given node.
+func (mt *merkleTree) Node(height, index uint32) []byte {
+	ptr := mt.n * ((1 << mt.height) - (1 << (mt.height - height)) + index)
+	return mt.buf[ptr : ptr+mt.n]
+}
+
+// Compute a subtree by expanding the secret seed into WOTS+ keypairs
+// and then hashing up.
+func (ctx *Context) genSubTree(skSeed, pubSeed []byte,
+	addr address) merkleTree {
+	// TODO parallelize
+	mt := newMerkleTree(ctx.treeHeight+1, ctx.p.N)
+
+	var otsAddr, lTreeAddr, nodeAddr address
+	otsAddr.setSubTreeFrom(addr)
+	otsAddr.setType(ADDR_TYPE_OTS)
+	lTreeAddr.setSubTreeFrom(addr)
+	lTreeAddr.setType(ADDR_TYPE_LTREE)
+	nodeAddr.setSubTreeFrom(addr)
+	nodeAddr.setType(ADDR_TYPE_HASHTREE)
+
+	// First, compute the leafs
+	var idx uint32
+	for idx = 0; idx < (1 << ctx.treeHeight); idx++ {
+		lTreeAddr.setLTree(idx)
+		otsAddr.setOTS(idx)
+		copy(mt.Node(0, idx), ctx.genLeaf(skSeed, pubSeed, lTreeAddr, otsAddr))
+	}
+
+	// Next, compute the internal nodes and root
+	var height uint32
+	for height = 1; height <= ctx.treeHeight; height++ {
+		nodeAddr.setTreeHeight(height - 1)
+		for idx = 0; idx < (1 << (ctx.treeHeight - height)); idx++ {
+			nodeAddr.setTreeIndex(idx)
+			copy(mt.Node(height, idx),
+				ctx.h(mt.Node(height-1, 2*idx),
+					mt.Node(height-1, 2*idx+1),
+					pubSeed, nodeAddr))
+		}
+	}
+
+	return mt
+}
+
 // Computes the leaf node associated to a WOTS+ public key.
 // Note that the WOTS+ public key is destroyed.
 func (ctx *Context) lTree(wotsPk, pubSeed []byte, addr address) []byte {

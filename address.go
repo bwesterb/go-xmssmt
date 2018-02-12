@@ -1,5 +1,11 @@
 package xmssmt
 
+const (
+	ADDR_TYPE_OTS      = 0
+	ADDR_TYPE_LTREE    = 1
+	ADDR_TYPE_HASHTREE = 2
+)
+
 type address [8]uint32
 
 func (addr *address) setLayer(layer uint32) {
