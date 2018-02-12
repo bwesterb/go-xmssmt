@@ -61,10 +61,9 @@ func (ctx *Context) genSubTree(skSeed, pubSeed []byte,
 		nodeAddr.setTreeHeight(height - 1)
 		for idx = 0; idx < (1 << (ctx.treeHeight - height)); idx++ {
 			nodeAddr.setTreeIndex(idx)
-			copy(mt.Node(height, idx),
-				ctx.h(mt.Node(height-1, 2*idx),
-					mt.Node(height-1, 2*idx+1),
-					pubSeed, nodeAddr))
+			ctx.hInto(mt.Node(height-1, 2*idx),
+				mt.Node(height-1, 2*idx+1),
+				pubSeed, nodeAddr, mt.Node(height, idx))
 		}
 	}
 
@@ -82,10 +81,10 @@ func (ctx *Context) lTree(wotsPk, pubSeed []byte, addr address) []byte {
 		var i uint32
 		for i = 0; i < parentNodes; i++ {
 			addr.setTreeIndex(i)
-			copy(wotsPk[i*ctx.p.N:(i+1)*ctx.p.N],
-				ctx.h(wotsPk[2*i*ctx.p.N:(2*i+1)*ctx.p.N],
-					wotsPk[(2*i+1)*ctx.p.N:(2*i+2)*ctx.p.N],
-					pubSeed, addr))
+			ctx.hInto(wotsPk[2*i*ctx.p.N:(2*i+1)*ctx.p.N],
+				wotsPk[(2*i+1)*ctx.p.N:(2*i+2)*ctx.p.N],
+				pubSeed, addr,
+				wotsPk[i*ctx.p.N:(i+1)*ctx.p.N])
 		}
 		if l&1 == 1 {
 			copy(wotsPk[(l>>1)*ctx.p.N:((l>>1)+1)*ctx.p.N],

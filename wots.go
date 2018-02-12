@@ -5,7 +5,7 @@ func (ctx *Context) wotsExpandSeed(in []byte) []byte {
 	var ret []byte = make([]byte, ctx.p.N*ctx.wotsLen)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
-		copy(ret[i*ctx.p.N:], ctx.prfUint64(uint64(i), in))
+		ctx.prfUint64Into(uint64(i), in, ret[i*ctx.p.N:])
 	}
 	return ret
 }
@@ -56,15 +56,14 @@ func (ctx *Context) toBaseW(input []byte, output []uint8) {
 
 // Compute the (start + steps)th value in the WOTS+ chain, given
 // the start'th value in the chain.
-func (ctx *Context) wotsGenChain(in []byte, start, steps uint16,
-	pubSeed []byte, addr address) []byte {
-	buf := in
+func (ctx *Context) wotsGenChainInto(in []byte, start, steps uint16,
+	pubSeed []byte, addr address, out []byte) {
+	copy(out, in)
 	var i uint16
 	for i = start; i < (start+steps) && (i < ctx.p.WotsW); i++ {
 		addr.setHash(uint32(i))
-		buf = ctx.f(buf, pubSeed, addr)
+		ctx.fInto(out, pubSeed, addr, out)
 	}
-	return buf
 }
 
 // Generate a WOTS+ public key from secret key seed.
@@ -73,9 +72,9 @@ func (ctx *Context) wotsPkGen(seed, pubSeed []byte, addr address) []byte {
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
-		copy(buf[ctx.p.N*i:ctx.p.N*(i+1)],
-			ctx.wotsGenChain(buf[ctx.p.N*i:ctx.p.N*(i+1)],
-				0, ctx.p.WotsW-1, pubSeed, addr))
+		ctx.wotsGenChainInto(buf[ctx.p.N*i:ctx.p.N*(i+1)],
+			0, ctx.p.WotsW-1, pubSeed, addr,
+			buf[ctx.p.N*i:ctx.p.N*(i+1)])
 	}
 	return buf
 }
@@ -87,9 +86,9 @@ func (ctx *Context) wotsSign(msg, seed, pubSeed []byte, addr address) []byte {
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
-		copy(buf[ctx.p.N*i:ctx.p.N*(i+1)],
-			ctx.wotsGenChain(buf[ctx.p.N*i:ctx.p.N*(i+1)],
-				0, uint16(lengths[i]), pubSeed, addr))
+		ctx.wotsGenChainInto(buf[ctx.p.N*i:ctx.p.N*(i+1)],
+			0, uint16(lengths[i]), pubSeed, addr,
+			buf[ctx.p.N*i:ctx.p.N*(i+1)])
 	}
 	return buf
 }
@@ -102,10 +101,10 @@ func (ctx *Context) wotsPkFromSig(sig, msg, pubSeed []byte,
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
-		copy(buf[ctx.p.N*i:ctx.p.N*(i+1)],
-			ctx.wotsGenChain(sig[ctx.p.N*i:ctx.p.N*(i+1)],
-				uint16(lengths[i]), ctx.p.WotsW-1-uint16(lengths[i]),
-				pubSeed, addr))
+		ctx.wotsGenChainInto(sig[ctx.p.N*i:ctx.p.N*(i+1)],
+			uint16(lengths[i]), ctx.p.WotsW-1-uint16(lengths[i]),
+			pubSeed, addr,
+			buf[ctx.p.N*i:ctx.p.N*(i+1)])
 	}
 	return buf
 }

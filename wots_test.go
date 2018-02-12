@@ -18,8 +18,9 @@ func testWotsGenChain(ctx *Context, expect string, t *testing.T) {
 	for i := 0; i < 8; i++ {
 		addr[i] = 500000000 * uint32(i)
 	}
-	val := hex.EncodeToString(ctx.wotsGenChain(
-		in, 4, 5, pubSeed, address(addr)))
+	ret := make([]byte, ctx.p.N)
+	ctx.wotsGenChainInto(in, 4, 5, pubSeed, address(addr), ret)
+	val := hex.EncodeToString(ret)
 	if val != expect {
 		t.Errorf("%s wotsGenChain returned %s instead of %s", ctx.Name(), val, expect)
 	}
