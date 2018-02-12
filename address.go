@@ -1,5 +1,9 @@
 package xmssmt
 
+import (
+	"encoding/binary"
+)
+
 const (
 	ADDR_TYPE_OTS      = 0
 	ADDR_TYPE_LTREE    = 1
@@ -65,6 +69,6 @@ func (addr *address) toBytes() []byte {
 
 func (addr *address) writeInto(buf []byte) {
 	for i := 0; i < 8; i++ {
-		encodeUint64Into(uint64(addr[i]), buf[i*4:(i+1)*4])
+		binary.BigEndian.PutUint32(buf[i*4:(i+1)*4], addr[i])
 	}
 }
