@@ -96,10 +96,20 @@ func testGenSubTree(ctx *Context, expect string, t *testing.T) {
 	}
 }
 
-func TestGenSubTree(t *testing.T) {
+func TestGenSubTree5(t *testing.T) {
 	testGenSubTree(NewContextFromOid(true, 5), "8a692f3894a4d7754b7a4cf540f5ef47e6f50c28ab119a162b82769f3e6ead4d", t)
 	testGenSubTree(NewContextFromOid(true, 13), "3519ceb982ee15511efbbf492378b0601d1ed5b55e0708272e2da50481bbd45dc3b150f8afd6644b673750f724ba81a539565b1bbed44653280314626c89972d", t)
+}
+
+func TestGenSubTree10(t *testing.T) {
 	testGenSubTree(NewContextFromOid(true, 1), "bfe8b34813f7d878ded6a4433431204412351162db29d33bccd905d61c1411e4", t)
+}
+
+func TestGenSubTree16(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping genSubTree of 2^16")
+	}
+	testGenSubTree(NewContextFromOid(false, 2), "fd41b44b25d0cf78b0243ffc8c783530f8ad9dd3ec3d1fd9d997245fb2fb7726", t)
 }
 
 func TestMerkleTree(t *testing.T) {
