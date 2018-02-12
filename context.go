@@ -219,6 +219,7 @@ func NewContextFromOid(mt bool, oid uint32) *Context {
 	if ok {
 		ctx, _ := NewContext(entry.params)
 		ctx.oid = oid
+		ctx.mt = mt
 		ctx.name = &entry.name
 		return ctx
 	} else {
@@ -236,6 +237,7 @@ func NewContextFromName(name string) *Context {
 	ctx, _ := NewContext(entry.params)
 	ctx.name = &name
 	ctx.oid = entry.oid
+	ctx.mt = entry.mt
 	return ctx
 }
 
@@ -294,6 +296,11 @@ func (ctx *Context) Name() string {
 // Returns the Oid of the XMSSMT instance and 0 if it has no Oid.
 func (ctx *Context) Oid() uint32 {
 	return ctx.oid
+}
+
+// Returns whether this is an XMSSMT instance (as opposed to XMSS)
+func (ctx *Context) MT() bool {
+	return ctx.mt
 }
 
 // Get parameters of an XMSS[MT] instance
