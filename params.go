@@ -188,6 +188,7 @@ func NewContextFromOid(mt bool, oid uint32) *Context {
 	entry, ok := lut[oid]
 	if ok {
 		ctx, _ := NewContext(entry.params)
+		ctx.oid = oid
 		ctx.name = &entry.name
 		return ctx
 	} else {
@@ -198,12 +199,13 @@ func NewContextFromOid(mt bool, oid uint32) *Context {
 // Return new context for the given XMSS[MT] algorithm name (and nil if the
 // algorithm name is unknown).
 func NewContextFromName(name string) *Context {
-	params := ParamsFromName(name)
-	if params == nil {
+	entry, ok := registryNameLut[name]
+	if !ok {
 		return nil
 	}
-	ctx, _ := NewContext(*params)
+	ctx, _ := NewContext(entry.params)
 	ctx.name = &name
+	ctx.oid = entry.oid
 	return ctx
 }
 
@@ -257,6 +259,11 @@ func (ctx *Context) Name() string {
 		return *ctx.name
 	}
 	return ""
+}
+
+// Returns the Oid of the XMSSMT instance and 0 if it has no Oid.
+func (ctx *Context) Oid() uint32 {
+	return ctx.oid
 }
 
 // Get parameters of an XMSS[MT] instance
