@@ -1,5 +1,13 @@
 package xmssmt
 
+// Encodes the given uint64 into the buffer out in Big Endian
+func encodeUint64Into(x uint64, out []byte) {
+	for i := len(out) - 1; i >= 0; i-- {
+		out[i] = byte(x)
+		x >>= 8
+	}
+}
+
 // Encodes the given uint64 as [outLen]byte in Big Endian.
 func encodeUint64(x uint64, outLen int) []byte {
 	ret := make([]byte, outLen)

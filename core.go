@@ -116,5 +116,5 @@ func (ctx *Context) getWotsSeed(skSeed []byte, addr address) []byte {
 	addr.setChain(0)
 	addr.setHash(0)
 	addr.setKeyAndMask(0)
-	return ctx.prf(addr.toBytes(), skSeed)
+	return ctx.prfAddr(addr, skSeed)
 }

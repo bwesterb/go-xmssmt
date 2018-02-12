@@ -58,7 +58,13 @@ func (addr *address) setTreeIndex(treeIndex uint32) {
 func (addr *address) toBytes() []byte {
 	buf := make([]byte, 32)
 	for i := 0; i < 8; i++ {
-		copy(buf[i*4:], encodeUint64(uint64(addr[i]), 4))
+		encodeUint64Into(uint64(addr[i]), buf[i*4:(i+1)*4])
 	}
 	return buf
+}
+
+func (addr *address) writeInto(buf []byte) {
+	for i := 0; i < 8; i++ {
+		encodeUint64Into(uint64(addr[i]), buf[i*4:(i+1)*4])
+	}
 }

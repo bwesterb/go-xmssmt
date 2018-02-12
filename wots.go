@@ -5,7 +5,7 @@ func (ctx *Context) wotsExpandSeed(in []byte) []byte {
 	var ret []byte = make([]byte, ctx.p.N*ctx.wotsLen)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
-		copy(ret[i*ctx.p.N:], ctx.prf(encodeUint64(uint64(i), 32), in))
+		copy(ret[i*ctx.p.N:], ctx.prfUint64(uint64(i), in))
 	}
 	return ret
 }
