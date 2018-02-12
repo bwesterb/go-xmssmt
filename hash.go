@@ -35,8 +35,8 @@ func (ctx *Context) hashInto(in, out []byte) {
 }
 
 // Compute PRF(key, encodeUint64(i))
-func (ctx *Context) prfUint64Into(i uint64, key, out []byte) {
-	buf := make([]byte, 2*ctx.p.N+32)
+func (ctx *Context) prfUint64Into(pad scratchPad, i uint64, key, out []byte) {
+	buf := pad.prfBuf()
 	encodeUint64Into(HASH_PADDING_PRF, buf[:ctx.p.N])
 	copy(buf[ctx.p.N:], key)
 	encodeUint64Into(i, buf[ctx.p.N*2:])
@@ -63,14 +63,14 @@ func (ctx *Context) prfAddrInto(pad scratchPad, addr address, key, out []byte) {
 // in must be 32 bytes and key must be N bytes.
 func (ctx *Context) prf(in, key []byte) []byte {
 	ret := make([]byte, ctx.p.N)
-	ctx.prfInto(in, key, ret)
+	ctx.prfInto(ctx.newScratchPad(), in, key, ret)
 	return ret
 }
 
 // Compute PRF(key, in) and put it into out
 // in must be 32 bytes and key must be N bytes.
-func (ctx *Context) prfInto(in, key, out []byte) {
-	buf := make([]byte, 2*ctx.p.N+32)
+func (ctx *Context) prfInto(pad scratchPad, in, key, out []byte) {
+	buf := pad.prfBuf()
 	encodeUint64Into(HASH_PADDING_PRF, buf[:ctx.p.N])
 	copy(buf[ctx.p.N:], key)
 	copy(buf[ctx.p.N*2:], in)
@@ -130,10 +130,10 @@ func (ctx *Context) hInto(pad scratchPad, left, right, pubSeed []byte,
 	addr.setKeyAndMask(0)
 	ctx.prfAddrInto(pad, addr, pubSeed, buf[ctx.p.N:ctx.p.N*2])
 	addr.setKeyAndMask(1)
-	leftBitmask := ctx.prfAddr(pad, addr, pubSeed)
+	ctx.prfAddrInto(pad, addr, pubSeed, buf[2*ctx.p.N:3*ctx.p.N])
 	addr.setKeyAndMask(2)
-	rightBitmask := ctx.prfAddr(pad, addr, pubSeed)
-	xor.BytesSameLen(buf[2*ctx.p.N:3*ctx.p.N], left, leftBitmask)
-	xor.BytesSameLen(buf[3*ctx.p.N:], right, rightBitmask)
+	ctx.prfAddrInto(pad, addr, pubSeed, buf[3*ctx.p.N:])
+	xor.BytesSameLen(buf[2*ctx.p.N:3*ctx.p.N], left, buf[2*ctx.p.N:3*ctx.p.N])
+	xor.BytesSameLen(buf[3*ctx.p.N:], right, buf[3*ctx.p.N:])
 	ctx.hashInto(buf, out)
 }

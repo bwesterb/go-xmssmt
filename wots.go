@@ -1,11 +1,11 @@
 package xmssmt
 
 // Expands seed to WOTS+ secret key
-func (ctx *Context) wotsExpandSeed(in []byte) []byte {
+func (ctx *Context) wotsExpandSeed(pad scratchPad, in []byte) []byte {
 	var ret []byte = make([]byte, ctx.p.N*ctx.wotsLen)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
-		ctx.prfUint64Into(uint64(i), in, ret[i*ctx.p.N:])
+		ctx.prfUint64Into(pad, uint64(i), in, ret[i*ctx.p.N:])
 	}
 	return ret
 }
@@ -70,7 +70,7 @@ func (ctx *Context) wotsGenChainInto(pad scratchPad, in []byte,
 // Generate a WOTS+ public key from secret key seed.
 func (ctx *Context) wotsPkGen(pad scratchPad, seed,
 	pubSeed []byte, addr address) []byte {
-	buf := ctx.wotsExpandSeed(seed)
+	buf := ctx.wotsExpandSeed(pad, seed)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
@@ -85,7 +85,7 @@ func (ctx *Context) wotsPkGen(pad scratchPad, seed,
 func (ctx *Context) wotsSign(pad scratchPad, msg, seed, pubSeed []byte,
 	addr address) []byte {
 	lengths := ctx.wotsChainLengths(msg)
-	buf := ctx.wotsExpandSeed(seed)
+	buf := ctx.wotsExpandSeed(pad, seed)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
