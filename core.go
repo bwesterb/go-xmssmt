@@ -43,6 +43,9 @@ func (ctx *Context) genSubTree(pad scratchPad, skSeed, pubSeed []byte,
 	addr address) merkleTree {
 	mt := newMerkleTree(ctx.treeHeight+1, ctx.p.N)
 
+	// TODO we compute the leafs in parallel.  Is it worth computing
+	// the internal nodes in parallel?
+
 	var otsAddr, lTreeAddr, nodeAddr address
 	otsAddr.setSubTreeFrom(addr)
 	otsAddr.setType(ADDR_TYPE_OTS)
@@ -58,11 +61,12 @@ func (ctx *Context) genSubTree(pad scratchPad, skSeed, pubSeed []byte,
 		for idx = 0; idx < (1 << ctx.treeHeight); idx++ {
 			lTreeAddr.setLTree(idx)
 			otsAddr.setOTS(idx)
-			copy(mt.Node(0, idx),
-				ctx.genLeaf(pad, skSeed, pubSeed,
-					lTreeAddr, otsAddr))
+			copy(mt.Node(0, idx), ctx.genLeaf(
+				pad, skSeed, pubSeed, lTreeAddr, otsAddr))
 		}
 	} else {
+		// The code in this branch does exactly the same as in
+		// the branch above, but then in parallel.
 		wg := &sync.WaitGroup{}
 		mux := &sync.Mutex{}
 		var perBatch uint32 = 32
@@ -91,14 +95,19 @@ func (ctx *Context) genSubTree(pad scratchPad, skSeed, pubSeed []byte,
 						lTreeAddr.setLTree(ourIdx)
 						otsAddr.setOTS(ourIdx)
 						copy(mt.Node(0, ourIdx),
-							ctx.genLeaf(pad, skSeed, pubSeed, lTreeAddr, otsAddr))
+							ctx.genLeaf(
+								pad,
+								skSeed,
+								pubSeed,
+								lTreeAddr,
+								otsAddr))
 					}
 				}
 				wg.Done()
 			}(lTreeAddr, otsAddr)
 		}
 
-		wg.Wait()
+		wg.Wait() // wait for all workers to finish
 	}
 
 	// Next, compute the internal nodes and root
