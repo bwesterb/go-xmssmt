@@ -23,86 +23,6 @@ type Params struct {
 	WotsW uint16
 }
 
-// Entry in the registry of algorithms
-type regEntry struct {
-	name   string // name, eg. XMSSMT-SHA2_20/2_256
-	mt     bool   // whether its XMSSMT (instead of XMSS)
-	oid    uint32 // oid of the algorithm
-	params Params // parameters of the algorithm
-}
-
-// Registry of named XMSS[MT] algorithms
-var registry []regEntry = []regEntry{
-	{"XMSSMT-SHA2_20/2_256", true, 0x00000001, Params{SHA2, 32, 20, 2, 16}},
-	{"XMSSMT-SHA2_20/4_256", true, 0x00000002, Params{SHA2, 32, 20, 4, 16}},
-	{"XMSSMT-SHA2_40/2_256", true, 0x00000003, Params{SHA2, 32, 40, 2, 16}},
-	{"XMSSMT-SHA2_40/4_256", true, 0x00000004, Params{SHA2, 32, 40, 4, 16}},
-	{"XMSSMT-SHA2_40/8_256", true, 0x00000005, Params{SHA2, 32, 40, 8, 16}},
-	{"XMSSMT-SHA2_60/3_256", true, 0x00000006, Params{SHA2, 32, 60, 3, 16}},
-	{"XMSSMT-SHA2_60/6_256", true, 0x00000007, Params{SHA2, 32, 60, 6, 16}},
-	{"XMSSMT-SHA2_60/12_256", true, 0x00000008, Params{SHA2, 32, 60, 12, 16}},
-
-	{"XMSSMT-SHA2_20/2_512", true, 0x00000009, Params{SHA2, 64, 20, 2, 16}},
-	{"XMSSMT-SHA2_20/4_512", true, 0x0000000a, Params{SHA2, 64, 20, 4, 16}},
-	{"XMSSMT-SHA2_40/2_512", true, 0x0000000b, Params{SHA2, 64, 40, 2, 16}},
-	{"XMSSMT-SHA2_40/4_512", true, 0x0000000c, Params{SHA2, 64, 40, 4, 16}},
-	{"XMSSMT-SHA2_40/8_512", true, 0x0000000d, Params{SHA2, 64, 40, 8, 16}},
-	{"XMSSMT-SHA2_60/3_512", true, 0x0000000e, Params{SHA2, 64, 60, 3, 16}},
-	{"XMSSMT-SHA2_60/6_512", true, 0x0000000f, Params{SHA2, 64, 60, 6, 16}},
-	{"XMSSMT-SHA2_60/12_512", true, 0x00000010, Params{SHA2, 64, 60, 12, 16}},
-
-	{"XMSSMT-SHAKE_20/2_256", true, 0x00000011, Params{SHAKE, 32, 20, 2, 16}},
-	{"XMSSMT-SHAKE_20/4_256", true, 0x00000012, Params{SHAKE, 32, 20, 4, 16}},
-	{"XMSSMT-SHAKE_40/2_256", true, 0x00000013, Params{SHAKE, 32, 40, 2, 16}},
-	{"XMSSMT-SHAKE_40/4_256", true, 0x00000014, Params{SHAKE, 32, 40, 4, 16}},
-	{"XMSSMT-SHAKE_40/8_256", true, 0x00000015, Params{SHAKE, 32, 40, 8, 16}},
-	{"XMSSMT-SHAKE_60/3_256", true, 0x00000016, Params{SHAKE, 32, 60, 3, 16}},
-	{"XMSSMT-SHAKE_60/6_256", true, 0x00000017, Params{SHAKE, 32, 60, 6, 16}},
-	{"XMSSMT-SHAKE_60/12_256", true, 0x00000018, Params{SHAKE, 32, 60, 12, 16}},
-
-	{"XMSSMT-SHAKE_20/2_512", true, 0x00000019, Params{SHAKE, 64, 20, 2, 16}},
-	{"XMSSMT-SHAKE_20/4_512", true, 0x0000001a, Params{SHAKE, 64, 20, 4, 16}},
-	{"XMSSMT-SHAKE_40/2_512", true, 0x0000001b, Params{SHAKE, 64, 40, 2, 16}},
-	{"XMSSMT-SHAKE_40/4_512", true, 0x0000001c, Params{SHAKE, 64, 40, 4, 16}},
-	{"XMSSMT-SHAKE_40/8_512", true, 0x0000001d, Params{SHAKE, 64, 40, 8, 16}},
-	{"XMSSMT-SHAKE_60/3_512", true, 0x0000001e, Params{SHAKE, 64, 60, 3, 16}},
-	{"XMSSMT-SHAKE_60/6_512", true, 0x0000001f, Params{SHAKE, 64, 60, 6, 16}},
-	{"XMSSMT-SHAKE_60/12_512", true, 0x00000020, Params{SHAKE, 64, 60, 12, 16}},
-
-	{"XMSS-SHA2_10_256", false, 0x00000001, Params{SHA2, 32, 10, 1, 16}},
-	{"XMSS-SHA2_16_256", false, 0x00000002, Params{SHA2, 32, 16, 1, 16}},
-	{"XMSS-SHA2_20_256", false, 0x00000003, Params{SHA2, 32, 20, 1, 16}},
-	{"XMSS-SHA2_10_512", false, 0x00000004, Params{SHA2, 64, 10, 1, 16}},
-	{"XMSS-SHA2_16_512", false, 0x00000005, Params{SHA2, 64, 16, 1, 16}},
-	{"XMSS-SHA2_20_512", false, 0x00000006, Params{SHA2, 64, 20, 1, 16}},
-
-	{"XMSS-SHAKE_10_256", false, 0x00000007, Params{SHAKE, 32, 10, 1, 16}},
-	{"XMSS-SHAKE_16_256", false, 0x00000008, Params{SHAKE, 32, 16, 1, 16}},
-	{"XMSS-SHAKE_20_256", false, 0x00000009, Params{SHAKE, 32, 20, 1, 16}},
-	{"XMSS-SHAKE_10_512", false, 0x0000000a, Params{SHAKE, 64, 10, 1, 16}},
-	{"XMSS-SHAKE_16_512", false, 0x0000000b, Params{SHAKE, 64, 16, 1, 16}},
-	{"XMSS-SHAKE_20_512", false, 0x0000000c, Params{SHAKE, 64, 20, 1, 16}},
-}
-
-var registryNameLut map[string]regEntry
-var registryOidLut map[uint32]regEntry
-var registryOidMTLut map[uint32]regEntry
-
-// Initializes algorithm lookup tables.
-func init() {
-	registryNameLut = make(map[string]regEntry)
-	registryOidLut = make(map[uint32]regEntry)
-	registryOidMTLut = make(map[uint32]regEntry)
-	for _, entry := range registry {
-		registryNameLut[entry.name] = entry
-		if entry.mt {
-			registryOidMTLut[entry.oid] = entry
-		} else {
-			registryOidLut[entry.oid] = entry
-		}
-	}
-}
-
 // XMSS[MT] instance.
 // Create one using NewContextFromName, NewContextFromOid or NewContext.
 type Context struct {
@@ -126,30 +46,58 @@ type Context struct {
 	name         *string // name of algorithm
 }
 
-// A scratchpad used by a single goroutine to avoid memory allocation.
-type scratchPad struct {
-	buf []byte
-	n   uint32
+// Sequence number of signatures.
+// (Corresponds with leaf indices in the implementation.)
+type SignatureSeqNo uint64
+
+// XMSS[MT] private key
+type PrivateKey struct {
+	ctx     *Context // context, which contains parameters.
+	pubSeed []byte
+	skSeed  []byte
+	seqNo   SignatureSeqNo // first unused signature
+	// container that stores the secret key and signature
+	container PrivateKeyContainer
 }
 
-func (pad scratchPad) fBuf() []byte {
-	return pad.buf[:3*pad.n]
+type Error interface {
+	error
+	Locked() bool // Is this error because something (like a file) was locked?
+	Inner() error // Returns the wrapped error, if any
 }
 
-func (pad scratchPad) hBuf() []byte {
-	return pad.buf[3*pad.n : 7*pad.n]
+type errorImpl struct {
+	msg    string
+	locked bool
+	inner  error
 }
 
-func (pad scratchPad) prfBuf() []byte {
-	return pad.buf[7*pad.n : 9*pad.n+32]
-}
+func (err *errorImpl) Locked() bool { return err.locked }
+func (err *errorImpl) Inner() error { return err.inner }
 
-func (ctx *Context) newScratchPad() scratchPad {
-	n := ctx.p.N
-	return scratchPad{
-		buf: make([]byte, 9*n+32),
-		n:   n,
+func (err *errorImpl) Error() string {
+	if err.inner != nil {
+		return fmt.Sprintf("%s: %s", err.msg, err.inner.Error())
 	}
+	return err.msg
+}
+
+// Formats a new Error
+func errorf(format string, a ...interface{}) *errorImpl {
+	return &errorImpl{msg: fmt.Sprintf(format, a...)}
+}
+
+// Formats a new Error that wraps another
+func wrapErrorf(err error, format string, a ...interface{}) *errorImpl {
+	return &errorImpl{msg: fmt.Sprintf(format, a...), inner: err}
+}
+
+// Entry in the registry of algorithms
+type regEntry struct {
+	name   string // name, eg. XMSSMT-SHA2_20/2_256
+	mt     bool   // whether its XMSSMT (instead of XMSS)
+	oid    uint32 // oid of the algorithm
+	params Params // parameters of the algorithm
 }
 
 // Returns paramters for the named XMSS[MT] instance (and nil if there is no
@@ -276,4 +224,102 @@ func ListNames() (names []string) {
 		names[i] = entry.name
 	}
 	return
+}
+
+// Registry of named XMSS[MT] algorithms
+var registry []regEntry = []regEntry{
+	{"XMSSMT-SHA2_20/2_256", true, 0x00000001, Params{SHA2, 32, 20, 2, 16}},
+	{"XMSSMT-SHA2_20/4_256", true, 0x00000002, Params{SHA2, 32, 20, 4, 16}},
+	{"XMSSMT-SHA2_40/2_256", true, 0x00000003, Params{SHA2, 32, 40, 2, 16}},
+	{"XMSSMT-SHA2_40/4_256", true, 0x00000004, Params{SHA2, 32, 40, 4, 16}},
+	{"XMSSMT-SHA2_40/8_256", true, 0x00000005, Params{SHA2, 32, 40, 8, 16}},
+	{"XMSSMT-SHA2_60/3_256", true, 0x00000006, Params{SHA2, 32, 60, 3, 16}},
+	{"XMSSMT-SHA2_60/6_256", true, 0x00000007, Params{SHA2, 32, 60, 6, 16}},
+	{"XMSSMT-SHA2_60/12_256", true, 0x00000008, Params{SHA2, 32, 60, 12, 16}},
+
+	{"XMSSMT-SHA2_20/2_512", true, 0x00000009, Params{SHA2, 64, 20, 2, 16}},
+	{"XMSSMT-SHA2_20/4_512", true, 0x0000000a, Params{SHA2, 64, 20, 4, 16}},
+	{"XMSSMT-SHA2_40/2_512", true, 0x0000000b, Params{SHA2, 64, 40, 2, 16}},
+	{"XMSSMT-SHA2_40/4_512", true, 0x0000000c, Params{SHA2, 64, 40, 4, 16}},
+	{"XMSSMT-SHA2_40/8_512", true, 0x0000000d, Params{SHA2, 64, 40, 8, 16}},
+	{"XMSSMT-SHA2_60/3_512", true, 0x0000000e, Params{SHA2, 64, 60, 3, 16}},
+	{"XMSSMT-SHA2_60/6_512", true, 0x0000000f, Params{SHA2, 64, 60, 6, 16}},
+	{"XMSSMT-SHA2_60/12_512", true, 0x00000010, Params{SHA2, 64, 60, 12, 16}},
+
+	{"XMSSMT-SHAKE_20/2_256", true, 0x00000011, Params{SHAKE, 32, 20, 2, 16}},
+	{"XMSSMT-SHAKE_20/4_256", true, 0x00000012, Params{SHAKE, 32, 20, 4, 16}},
+	{"XMSSMT-SHAKE_40/2_256", true, 0x00000013, Params{SHAKE, 32, 40, 2, 16}},
+	{"XMSSMT-SHAKE_40/4_256", true, 0x00000014, Params{SHAKE, 32, 40, 4, 16}},
+	{"XMSSMT-SHAKE_40/8_256", true, 0x00000015, Params{SHAKE, 32, 40, 8, 16}},
+	{"XMSSMT-SHAKE_60/3_256", true, 0x00000016, Params{SHAKE, 32, 60, 3, 16}},
+	{"XMSSMT-SHAKE_60/6_256", true, 0x00000017, Params{SHAKE, 32, 60, 6, 16}},
+	{"XMSSMT-SHAKE_60/12_256", true, 0x00000018, Params{SHAKE, 32, 60, 12, 16}},
+
+	{"XMSSMT-SHAKE_20/2_512", true, 0x00000019, Params{SHAKE, 64, 20, 2, 16}},
+	{"XMSSMT-SHAKE_20/4_512", true, 0x0000001a, Params{SHAKE, 64, 20, 4, 16}},
+	{"XMSSMT-SHAKE_40/2_512", true, 0x0000001b, Params{SHAKE, 64, 40, 2, 16}},
+	{"XMSSMT-SHAKE_40/4_512", true, 0x0000001c, Params{SHAKE, 64, 40, 4, 16}},
+	{"XMSSMT-SHAKE_40/8_512", true, 0x0000001d, Params{SHAKE, 64, 40, 8, 16}},
+	{"XMSSMT-SHAKE_60/3_512", true, 0x0000001e, Params{SHAKE, 64, 60, 3, 16}},
+	{"XMSSMT-SHAKE_60/6_512", true, 0x0000001f, Params{SHAKE, 64, 60, 6, 16}},
+	{"XMSSMT-SHAKE_60/12_512", true, 0x00000020, Params{SHAKE, 64, 60, 12, 16}},
+
+	{"XMSS-SHA2_10_256", false, 0x00000001, Params{SHA2, 32, 10, 1, 16}},
+	{"XMSS-SHA2_16_256", false, 0x00000002, Params{SHA2, 32, 16, 1, 16}},
+	{"XMSS-SHA2_20_256", false, 0x00000003, Params{SHA2, 32, 20, 1, 16}},
+	{"XMSS-SHA2_10_512", false, 0x00000004, Params{SHA2, 64, 10, 1, 16}},
+	{"XMSS-SHA2_16_512", false, 0x00000005, Params{SHA2, 64, 16, 1, 16}},
+	{"XMSS-SHA2_20_512", false, 0x00000006, Params{SHA2, 64, 20, 1, 16}},
+
+	{"XMSS-SHAKE_10_256", false, 0x00000007, Params{SHAKE, 32, 10, 1, 16}},
+	{"XMSS-SHAKE_16_256", false, 0x00000008, Params{SHAKE, 32, 16, 1, 16}},
+	{"XMSS-SHAKE_20_256", false, 0x00000009, Params{SHAKE, 32, 20, 1, 16}},
+	{"XMSS-SHAKE_10_512", false, 0x0000000a, Params{SHAKE, 64, 10, 1, 16}},
+	{"XMSS-SHAKE_16_512", false, 0x0000000b, Params{SHAKE, 64, 16, 1, 16}},
+	{"XMSS-SHAKE_20_512", false, 0x0000000c, Params{SHAKE, 64, 20, 1, 16}},
+}
+
+var registryNameLut map[string]regEntry
+var registryOidLut map[uint32]regEntry
+var registryOidMTLut map[uint32]regEntry
+
+// Initializes algorithm lookup tables.
+func init() {
+	registryNameLut = make(map[string]regEntry)
+	registryOidLut = make(map[uint32]regEntry)
+	registryOidMTLut = make(map[uint32]regEntry)
+	for _, entry := range registry {
+		registryNameLut[entry.name] = entry
+		if entry.mt {
+			registryOidMTLut[entry.oid] = entry
+		} else {
+			registryOidLut[entry.oid] = entry
+		}
+	}
+}
+
+// A scratchpad used by a single goroutine to avoid memory allocation.
+type scratchPad struct {
+	buf []byte
+	n   uint32
+}
+
+func (pad scratchPad) fBuf() []byte {
+	return pad.buf[:3*pad.n]
+}
+
+func (pad scratchPad) hBuf() []byte {
+	return pad.buf[3*pad.n : 7*pad.n]
+}
+
+func (pad scratchPad) prfBuf() []byte {
+	return pad.buf[7*pad.n : 9*pad.n+32]
+}
+
+func (ctx *Context) newScratchPad() scratchPad {
+	n := ctx.p.N
+	return scratchPad{
+		buf: make([]byte, 9*n+32),
+		n:   n,
+	}
 }

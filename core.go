@@ -42,6 +42,15 @@ func (mt *merkleTree) Node(height, index uint32) []byte {
 func (ctx *Context) genSubTree(pad scratchPad, skSeed, pubSeed []byte,
 	addr address) merkleTree {
 	mt := newMerkleTree(ctx.treeHeight+1, ctx.p.N)
+	ctx.genSubTreeInto(pad, skSeed, pubSeed, addr, mt)
+	return mt
+}
+
+// Compute a subtree by expanding the secret seed into WOTS+ keypairs
+// and then hashing up.
+// mt should have height=ctx.treeHeight+1 and n=ctx.p.N.
+func (ctx *Context) genSubTreeInto(pad scratchPad, skSeed, pubSeed []byte,
+	addr address, mt merkleTree) {
 
 	// TODO we compute the leafs in parallel.  Is it worth computing
 	// the internal nodes in parallel?
@@ -121,8 +130,6 @@ func (ctx *Context) genSubTree(pad scratchPad, skSeed, pubSeed []byte,
 				pubSeed, nodeAddr, mt.Node(height, idx))
 		}
 	}
-
-	return mt
 }
 
 // Computes the leaf node associated to a WOTS+ public key.
