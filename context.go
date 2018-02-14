@@ -5,7 +5,7 @@ import (
 	"reflect"
 )
 
-type HashFunc uint32
+type HashFunc uint8
 
 const (
 	SHA2  HashFunc = 0
@@ -80,6 +80,19 @@ func (err *errorImpl) Error() string {
 		return fmt.Sprintf("%s: %s", err.msg, err.inner.Error())
 	}
 	return err.msg
+}
+
+// Returns the size of the subtrees for this parameter.
+func (params *Params) SubTreeSize() int {
+	height := (params.FullHeight / params.D) + 1
+	return int(((1 << height) - 1) * params.N)
+}
+
+// Size of the private key as stored by PrivateKeyContainer.
+// NOTE this is not equal to the privateKeySize of the spec, which includes
+//      the signature sequence number.
+func (params *Params) PrivateKeySize() int {
+	return int(params.N * 4) // skSeed + skPrf + pubSeed + root
 }
 
 // Formats a new Error
