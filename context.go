@@ -52,12 +52,45 @@ type SignatureSeqNo uint64
 
 // XMSS[MT] private key
 type PrivateKey struct {
-	ctx     *Context // context, which contains parameters.
+	ctx     *Context // context, which contains algorithm parameters.
 	pubSeed []byte
 	skSeed  []byte
+	skPrf   []byte
+	root    []byte         // root node
 	seqNo   SignatureSeqNo // first unused signature
-	// container that stores the secret key and signature
-	container PrivateKeyContainer
+	// container that stores the secret key, signature sequence number
+	// and caches the subtrees
+	ctr PrivateKeyContainer
+	// Number of signatures reserved from the container.
+	// See PrivateKeyContainer.Borrow()
+	borrowed uint32
+}
+
+// XMSS[MT] public key
+type PublicKey struct {
+	ctx     *Context // context which contains algorithm parameters
+	pubSeed []byte
+	root    []byte // root node
+}
+
+// Represents a XMSS[MT] signature
+type Signature struct {
+	ctx   *Context       // context which contains algorithm parameter
+	seqNo SignatureSeqNo // sequence number of this signature. (Same as index.)
+	hash  []byte         // hash of the message
+
+	// The signature consists of several barebones XMSS signatures.
+	// sigs[0] signs hash, sigs[1] signs the root of the subtree for sigs[0],
+	// sigs[2] signs the root of the subtree for sigs[1], ...
+	// sigs[d-1] signs the root of the subtree for sigs[d-2].
+	sigs []subTreeSig
+}
+
+// Represents a signature made by a subtree. This is basically
+// an XMSS signature without all the decorations.
+type subTreeSig struct {
+	wotsSig  []byte
+	authPath []byte
 }
 
 type Error interface {
@@ -82,17 +115,243 @@ func (err *errorImpl) Error() string {
 	return err.msg
 }
 
+// Derives an XMSS[MT} public/private keypair from the given seeds
+// and stores it at the given path on the filesystem.
+// NOTE Do not forget to Close() the returned PrivateKey
+func (ctx *Context) Derive(path string, pubSeed, skSeed, skPrf []byte) (
+	*PrivateKey, *PublicKey, Error) {
+	ctr, err := OpenFSPrivateKeyContainer(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ctx.DeriveInto(ctr, pubSeed, skSeed, skPrf)
+}
+
+// Derives an XMSS[MT] public/private keypair from the given seeds
+// and stores it in the container.  pubSeed, skSeed and skPrf should be
+// secret random ctx.p.N length byte slices.
+func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
+	pubSeed, skSeed, skPrf []byte) (*PrivateKey, *PublicKey, Error) {
+	if len(pubSeed) != int(ctx.p.N) || len(skSeed) != int(ctx.p.N) || len(skPrf) != int(ctx.p.N) {
+		return nil, nil, errorf(
+			"skPrf, skSeed and pubSeed should have length %d", ctx.p.N)
+	}
+
+	concatSk := make([]byte, 3*ctx.p.N)
+	copy(concatSk, skSeed)
+	copy(concatSk[ctx.p.N:], skPrf)
+	copy(concatSk[ctx.p.N*2:], pubSeed)
+	err := ctr.Reset(concatSk, ctx.p)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	sk := PrivateKey{
+		ctx:     ctx,
+		pubSeed: pubSeed,
+		skSeed:  skSeed,
+		seqNo:   0,
+		skPrf:   skPrf,
+		ctr:     ctr,
+	}
+
+	pad := ctx.newScratchPad()
+	mt, _, err := sk.getSubTree(pad, SubTreeAddress{Layer: ctx.p.D - 1})
+	if err != nil {
+		return nil, nil, err
+	}
+	sk.root = mt.Root()
+
+	pk := PublicKey{
+		ctx:     ctx,
+		pubSeed: pubSeed,
+		root:    sk.root,
+	}
+
+	return &sk, &pk, nil
+}
+
+// Returns the given subtree, either by loading it from the cache,
+// or generating it.
+func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
+	mt *merkleTree, wotsSig []byte, err Error) {
+	buf, exists, err := sk.ctr.GetSubTree(sta)
+	if err != nil {
+		return
+	}
+
+	treeBuf := buf[:sk.ctx.p.BareSubTreeSize()]
+	mtDeref := merkleTreeFromBuf(treeBuf, sk.ctx.treeHeight+1, sk.ctx.p.N)
+	mt = &mtDeref
+	wotsSig = buf[sk.ctx.p.BareSubTreeSize():]
+
+	if exists {
+		return
+	}
+
+	sk.ctx.genSubTreeInto(pad, sk.skSeed, sk.pubSeed, sta.address(), mtDeref)
+
+	// Generate WOTS+ signature --- at least, if we're not the root.
+	if sta.Layer == sk.ctx.p.D-1 {
+		return
+	}
+
+	// Compute address of parent
+	parentSta := SubTreeAddress{
+		Layer: sta.Layer + 1,
+		Tree:  sta.Tree >> sk.ctx.treeHeight,
+	}
+
+	// If the parent is not cached, we'll need to cache it.  To this end
+	// we will cache all ancestors.
+	// It is strictly speaking unnecessary to generate the ancestors to
+	// sign the root of this tree: we will do it anyway, for otherwise
+	// we cannot generate the authentication path, which we'll need
+	// anyway later on.
+	if !sk.ctr.HasSubTree(parentSta) {
+		for layer := sk.ctx.p.D; layer > sta.Layer; layer-- {
+			ancSta := SubTreeAddress{
+				Layer: layer,
+				Tree:  sta.Tree >> (sk.ctx.treeHeight * (layer - sta.Layer)),
+			}
+			if !sk.ctr.HasSubTree(ancSta) {
+				_, _, err = sk.getSubTree(pad, ancSta)
+
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+		}
+	}
+
+	// Get the parent sub tree
+	_, _, err = sk.getSubTree(pad, parentSta)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Sign our root
+	otsAddr := parentSta.address()
+	leafIdx := uint32(sta.Tree & ((1 << sk.ctx.treeHeight) - 1))
+	otsAddr.setOTS(leafIdx)
+	sk.ctx.wotsSignInto(
+		pad,
+		mt.Root(),
+		sk.ctx.getWotsSeed(pad, sk.skSeed, otsAddr),
+		sk.pubSeed,
+		otsAddr,
+		wotsSig)
+	return
+}
+
+// Gets the next free sequence number
+func (sk *PrivateKey) getSeqNo() (SignatureSeqNo, Error) {
+	if sk.borrowed > 0 {
+		// If we have some borrowed sequence numbers, we can simply use one
+		// of them.
+		sk.borrowed -= 1
+		sk.seqNo += 1
+		return sk.seqNo - 1, nil
+	}
+
+	// If we didn't borrow sequence numbers, then we have to increment
+	// the sequence number in the container before we continue.
+	err := sk.ctr.SetSeqNo(sk.seqNo + 1)
+	if err != nil {
+		return 0, err
+	}
+	sk.seqNo += 1
+	return sk.seqNo - 1, nil
+}
+
+// Signs the given message.
+func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
+	pad := sk.ctx.newScratchPad()
+	seqNo, err := sk.getSeqNo()
+	if err != nil {
+		return nil, err
+	}
+
+	// Compute the path of subtrees
+	staPath, leafs := sk.ctx.subTreePathForSeqNo(seqNo)
+
+	// Fetch (or generate) the subtrees
+	mts := make([]*merkleTree, len(staPath))
+	wotsSigs := make([][]byte, len(staPath))
+	for i := len(staPath) - 1; i >= 0; i-- {
+		mts[i], wotsSigs[i], err = sk.getSubTree(pad, staPath[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Assemble the signature.
+	sig := Signature{
+		ctx:   sk.ctx,
+		seqNo: seqNo,
+		sigs:  make([]subTreeSig, len(staPath)),
+	}
+
+	// The tail of the signature is probably cached, retrieve (or create) it
+	for i := 1; i < len(staPath); i++ {
+		sig.sigs[i] = subTreeSig{
+			wotsSig:  wotsSigs[i-1],
+			authPath: mts[i].AuthPath(leafs[i]),
+		}
+	}
+
+	// Create the part of the signature unique to this message
+	sig.sigs[0] = subTreeSig{
+		authPath: mts[0].AuthPath(leafs[0]),
+		wotsSig:  make([]byte, sk.ctx.wotsSigBytes),
+	}
+
+	// drv := sk.ctx.prfUint64(pad, uint64(seqNo), sk.skPrf)
+	otsAddr := staPath[0].address()
+	otsAddr.setOTS(leafs[0])
+	// TODO correct
+	sk.ctx.wotsSignInto(
+		pad,
+		msg,
+		sk.ctx.getWotsSeed(pad, sk.skSeed, otsAddr),
+		sk.pubSeed,
+		otsAddr,
+		sig.sigs[0].wotsSig)
+
+	return &sig, nil
+}
+
+// Close the underlying container
+func (sk *PrivateKey) Close() Error {
+	if sk.borrowed > 0 {
+		sk.seqNo -= SignatureSeqNo(sk.borrowed)
+		sk.borrowed = 0
+		err := sk.ctr.SetSeqNo(sk.seqNo)
+		if err != nil {
+			return err
+		}
+	}
+	return sk.ctr.Close()
+}
+
 // Returns the size of the subtrees for this parameter.
-func (params *Params) SubTreeSize() int {
+func (params *Params) BareSubTreeSize() int {
 	height := (params.FullHeight / params.D) + 1
 	return int(((1 << height) - 1) * params.N)
 }
 
+// Returns the size of the cached subtrees for this parameter.
+func (params *Params) CachedSubTreeSize() int {
+	// A cached subtree contains the merkle subtree and possibly
+	// a WOTS+ signature of the substree above it.
+	return params.BareSubTreeSize() + int(params.WotsSignatureSize())
+}
+
 // Size of the private key as stored by PrivateKeyContainer.
 // NOTE this is not equal to the privateKeySize of the spec, which includes
-//      the signature sequence number.
+//      the signature sequence number, OID and root
 func (params *Params) PrivateKeySize() int {
-	return int(params.N * 4) // skSeed + skPrf + pubSeed + root
+	return int(params.N * 3) // skSeed + skPrf + pubSeed
 }
 
 // Formats a new Error
@@ -180,17 +439,42 @@ func NewContext(params Params) (ctx *Context, err error) {
 		ctx.indexBytes = 4
 	}
 
-	ctx.wotsLogW = 4
-	ctx.wotsLen1 = 8 * params.N / uint32(ctx.wotsLogW)
-	ctx.wotsLen2 = 3
-	ctx.wotsLen = ctx.wotsLen1 + ctx.wotsLen2
-	ctx.wotsSigBytes = ctx.wotsLen * params.N
+	ctx.wotsLogW = params.WotsLogW()
+	ctx.wotsLen1 = params.WotsLen1()
+	ctx.wotsLen2 = params.WotsLen2()
+	ctx.wotsLen = params.WotsLen()
+	ctx.wotsSigBytes = params.WotsSignatureSize()
 	ctx.sigBytes = (ctx.indexBytes + params.N +
 		params.D*ctx.wotsSigBytes + params.FullHeight*params.N)
 	ctx.pkBytes = 2 * params.N
 	ctx.skBytes = ctx.indexBytes + 4*params.N
 
 	return
+}
+
+// Returns the 2log of the Winternitz parameter
+func (params *Params) WotsLogW() uint8 {
+	return 4
+}
+
+// Returns the number of  main WOTS+ chains
+func (params *Params) WotsLen1() uint32 {
+	return 8 * params.N / uint32(params.WotsLogW())
+}
+
+// Returns the number of WOTS+ checksum chains
+func (params *Params) WotsLen2() uint32 {
+	return 3
+}
+
+// Returns the total number of WOTS+ chains
+func (params *Params) WotsLen() uint32 {
+	return params.WotsLen1() + params.WotsLen2()
+}
+
+// Returns the size of a WOTS+ signature
+func (params *Params) WotsSignatureSize() uint32 {
+	return params.WotsLen() * params.N
 }
 
 // Returns the name of the XMSSMT instance and an empty string if it has
@@ -298,6 +582,7 @@ var registryOidMTLut map[uint32]regEntry
 
 // Initializes algorithm lookup tables.
 func init() {
+	log = &dummyLogger{}
 	registryNameLut = make(map[string]regEntry)
 	registryOidLut = make(map[uint32]regEntry)
 	registryOidMTLut = make(map[uint32]regEntry)
@@ -335,4 +620,19 @@ func (ctx *Context) newScratchPad() scratchPad {
 		buf: make([]byte, 9*n+32),
 		n:   n,
 	}
+}
+
+type Logger interface {
+	Logf(format string, a ...interface{})
+}
+
+type dummyLogger struct{}
+
+func (logger *dummyLogger) Logf(format string, a ...interface{}) {}
+
+var log Logger
+
+// Enables logging
+func SetLogger(logger Logger) {
+	log = logger
 }

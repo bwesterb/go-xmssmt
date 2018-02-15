@@ -24,17 +24,41 @@ type merkleTree struct {
 
 // Allocates memory for a merkle tree of n-byte strings of the given height.
 func newMerkleTree(height, n uint32) merkleTree {
+	return merkleTreeFromBuf(make([]byte, ((1<<height)-1)*n), height, n)
+}
+
+// Returns a merkle tree wrapping the given buf
+func merkleTreeFromBuf(buf []byte, height, n uint32) merkleTree {
 	return merkleTree{
 		height: height,
 		n:      n,
-		buf:    make([]byte, ((1<<height)-1)*n),
+		buf:    buf,
 	}
+}
+
+// Returns the root of the tree
+func (mt *merkleTree) Root() []byte {
+	return mt.Node(mt.height-1, 0)
 }
 
 // Returns a slice to the given node.
 func (mt *merkleTree) Node(height, index uint32) []byte {
 	ptr := mt.n * ((1 << mt.height) - (1 << (mt.height - height)) + index)
 	return mt.buf[ptr : ptr+mt.n]
+}
+
+// Returns the authentication path for the given leaf
+func (mt *merkleTree) AuthPath(leaf uint32) []byte {
+	ret := make([]byte, mt.n*mt.height)
+	node := leaf
+	var i uint32
+	for i = 0; i < mt.height; i++ {
+		// node ^ 1 is the offset of the sibling of node
+		copy(ret[i*mt.n:], mt.Node(i, node^1))
+		// node / 2 is the offset of the parent of node.
+		node = node / 2
+	}
+	return ret
 }
 
 // Compute a subtree by expanding the secret seed into WOTS+ keypairs
@@ -54,6 +78,7 @@ func (ctx *Context) genSubTreeInto(pad scratchPad, skSeed, pubSeed []byte,
 
 	// TODO we compute the leafs in parallel.  Is it worth computing
 	// the internal nodes in parallel?
+	log.Logf("Generating subtree %v ...", addr)
 
 	var otsAddr, lTreeAddr, nodeAddr address
 	otsAddr.setSubTreeFrom(addr)
@@ -180,4 +205,23 @@ func (ctx *Context) getWotsSeed(pad scratchPad, skSeed []byte,
 	addr.setHash(0)
 	addr.setKeyAndMask(0)
 	return ctx.prfAddr(pad, addr, skSeed)
+}
+
+// Returns the path of subtrees associated to signature sequence number.
+// Also, for each of the subtrees, returns the leaf in the subtree
+// to which the subtree (or signature) below it corresponds.
+func (ctx *Context) subTreePathForSeqNo(seqNo SignatureSeqNo) (
+	path []SubTreeAddress, leafs []uint32) {
+	path = make([]SubTreeAddress, ctx.p.D)
+	leafs = make([]uint32, ctx.p.D)
+	var layer uint32
+	for layer = 0; layer < ctx.p.D; layer++ {
+		path[layer] = SubTreeAddress{
+			Layer: layer,
+			Tree:  (uint64(seqNo) >> ((layer + 1) * ctx.treeHeight)),
+		}
+		leafs[layer] = uint32((uint64(seqNo) >> (layer * ctx.treeHeight)) &
+			((1 << ctx.treeHeight) - 1))
+	}
+	return
 }

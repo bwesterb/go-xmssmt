@@ -34,7 +34,14 @@ func (ctx *Context) hashInto(in, out []byte) {
 	}
 }
 
-// Compute PRF(key, encodeUint64(i))
+// Compute PRF(key, i)
+func (ctx *Context) prfUint64(pad scratchPad, i uint64, key []byte) []byte {
+	ret := make([]byte, ctx.p.N)
+	ctx.prfUint64Into(pad, i, key, ret)
+	return ret
+}
+
+// Compute PRF(key, i)
 func (ctx *Context) prfUint64Into(pad scratchPad, i uint64, key, out []byte) {
 	buf := pad.prfBuf()
 	encodeUint64Into(HASH_PADDING_PRF, buf[:ctx.p.N])

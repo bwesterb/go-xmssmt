@@ -2,12 +2,17 @@ package xmssmt
 
 // Expands seed to WOTS+ secret key
 func (ctx *Context) wotsExpandSeed(pad scratchPad, in []byte) []byte {
-	var ret []byte = make([]byte, ctx.p.N*ctx.wotsLen)
+	ret := make([]byte, ctx.p.N*ctx.wotsLen)
+	ctx.wotsExpandSeedInto(pad, in, ret)
+	return ret
+}
+
+// Expands seed to WOTS+ secret key
+func (ctx *Context) wotsExpandSeedInto(pad scratchPad, in, out []byte) {
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
-		ctx.prfUint64Into(pad, uint64(i), in, ret[i*ctx.p.N:])
+		ctx.prfUint64Into(pad, uint64(i), in, out[i*ctx.p.N:])
 	}
-	return ret
 }
 
 // Converts a message into positions on the WOTS+ chains, which
@@ -84,16 +89,23 @@ func (ctx *Context) wotsPkGen(pad scratchPad, seed,
 // Create a WOTS+ signature of a n-byte message
 func (ctx *Context) wotsSign(pad scratchPad, msg, seed, pubSeed []byte,
 	addr address) []byte {
+	ret := make([]byte, ctx.wotsSigBytes)
+	ctx.wotsSignInto(pad, msg, seed, pubSeed, addr, ret)
+	return ret
+}
+
+// Create a WOTS+ signature of a n-byte message
+func (ctx *Context) wotsSignInto(pad scratchPad, msg, seed, pubSeed []byte,
+	addr address, wotsSig []byte) {
 	lengths := ctx.wotsChainLengths(msg)
-	buf := ctx.wotsExpandSeed(pad, seed)
+	ctx.wotsExpandSeedInto(pad, seed, wotsSig)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
-		ctx.wotsGenChainInto(pad, buf[ctx.p.N*i:ctx.p.N*(i+1)],
+		ctx.wotsGenChainInto(pad, wotsSig[ctx.p.N*i:ctx.p.N*(i+1)],
 			0, uint16(lengths[i]), pubSeed, addr,
-			buf[ctx.p.N*i:ctx.p.N*(i+1)])
+			wotsSig[ctx.p.N*i:ctx.p.N*(i+1)])
 	}
-	return buf
 }
 
 // Returns the public key from a message and its WOTS+ signature.

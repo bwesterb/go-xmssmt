@@ -54,7 +54,7 @@ func TestFSContainerCache(t *testing.T) {
 		t.Fatalf("These trees should not exist")
 	}
 
-	for i := 0; i < params.SubTreeSize(); i++ {
+	for i := 0; i < params.CachedSubTreeSize(); i++ {
 		buf1[i] = byte(i * 2)
 		buf2[i] = byte(i * 3)
 	}
@@ -96,7 +96,7 @@ func TestFSContainerCache(t *testing.T) {
 		t.Fatalf("DropSubTree: %v", err)
 	}
 
-	for i := 0; i < params.SubTreeSize(); i++ {
+	for i := 0; i < params.CachedSubTreeSize(); i++ {
 		buf1[i] = byte(i * 2)
 	}
 
@@ -140,7 +140,7 @@ func TestFSContainerCache(t *testing.T) {
 	}
 
 	ok := true
-	for i := 0; i < params.SubTreeSize(); i++ {
+	for i := 0; i < params.CachedSubTreeSize(); i++ {
 		if buf1[i] != byte(i*2) || buf2[i] != byte(i*3) {
 			ok = false
 		}

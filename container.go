@@ -27,9 +27,14 @@ type PrivateKeyContainer interface {
 	ResetCache() Error
 
 	// Returns the buffer for the given subtree.  If the subtree does not
-	// have a buffer yet, allocate it of the size specified in ResetCache().
+	// have a buffer yet, allocate it of the size params.CachedSubTreeSize()
+	// with params as specified in the last call to Reset().
 	// The exists return value indicates whether the subtree was present.
 	GetSubTree(address SubTreeAddress) (buf []byte, exists bool, err Error)
+
+	// Returns whether the given subtree is in the cache.  Returns false
+	// if the cache is not initialized.
+	HasSubTree(address SubTreeAddress) bool
 
 	// Drops the given subtree from the cache (if it was even cached to begin
 	// with).
@@ -82,6 +87,13 @@ type SubTreeAddress struct {
 
 	// The offset in the subtree.  The leftmost subtrees have tree=0
 	Tree uint64
+}
+
+// Converts to address
+func (sta *SubTreeAddress) address() (addr address) {
+	addr.setLayer(sta.Layer)
+	addr.setTree(sta.Tree)
+	return
 }
 
 // PrivateKeyContainer backed by three files:
@@ -345,8 +357,12 @@ func (ctr *fsContainer) writeCacheHeader() Error {
 	return nil
 }
 
+// Returns the offset of the given cached subtree entry in the cache file.
+// This offset point to the 13-byte header just in front of the actual data.
 func (ctr *fsContainer) subTreeOffset(idx uint32) int {
-	paddedSize := (((ctr.params.SubTreeSize() + 13) - 1) & 0xffffff000) + 4096
+	// Find the smallest multiple of 4096 above CachedSubTreeSize() + 13,
+	// where 13 is the size of fsSubTreeHeader
+	paddedSize := (((ctr.params.CachedSubTreeSize() + 13) - 1) & 0xffffff000) + 4096
 	return int(idx)*paddedSize + 4096
 }
 
@@ -354,7 +370,7 @@ func (ctr *fsContainer) mmapSubTree(idx uint32) ([]byte, error) {
 	buf, err := syscall.Mmap(
 		int(ctr.cacheFile.Fd()),
 		int64(ctr.subTreeOffset(idx)),
-		ctr.params.SubTreeSize()+13,
+		ctr.params.CachedSubTreeSize()+13,
 		syscall.PROT_READ|syscall.PROT_WRITE,
 		syscall.MAP_SHARED)
 	return buf, err
@@ -437,6 +453,15 @@ func (ctr *fsContainer) ListSubTrees() ([]SubTreeAddress, Error) {
 		i++
 	}
 	return ret, nil
+}
+
+func (ctr *fsContainer) HasSubTree(address SubTreeAddress) bool {
+	if !ctr.cacheInitialized {
+		return false
+	}
+
+	_, ok := ctr.cacheIdxLut[address]
+	return ok
 }
 
 func (ctr *fsContainer) DropSubTree(address SubTreeAddress) Error {
