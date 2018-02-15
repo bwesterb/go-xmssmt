@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -223,7 +222,7 @@ func (ctr *fsContainer) openCache() Error {
 		}
 
 		var treeHeader fsSubTreeHeader
-		err = binary.Write(ctr.cacheFile, binary.BigEndian, &treeHeader)
+		err = binary.Read(ctr.cacheFile, binary.BigEndian, &treeHeader)
 		if err != nil {
 			return wrapErrorf(err, "Failed to read subtree header in cache")
 		}
@@ -348,11 +347,10 @@ func (ctr *fsContainer) writeCacheHeader() Error {
 
 func (ctr *fsContainer) subTreeOffset(idx uint32) int {
 	paddedSize := (((ctr.params.SubTreeSize() + 13) - 1) & 0xffffff000) + 4096
-	return int(idx+1) * paddedSize
+	return int(idx)*paddedSize + 4096
 }
 
 func (ctr *fsContainer) mmapSubTree(idx uint32) ([]byte, error) {
-	log.Printf("mmap %d %d", ctr.subTreeOffset(idx), ctr.params.SubTreeSize()+13)
 	buf, err := syscall.Mmap(
 		int(ctr.cacheFile.Fd()),
 		int64(ctr.subTreeOffset(idx)),
@@ -379,7 +377,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 	if idx, ok := ctr.cacheIdxLut[address]; ok {
 		buf, err2 = ctr.mmapSubTree(idx)
 		if err2 != nil {
-			return nil, false, wrapErrorf(err, "Failed to mmap subtree")
+			return nil, false, wrapErrorf(err2, "Failed to mmap subtree")
 		}
 		ctr.cacheBufLut[address] = buf
 		return buf[13:], true, nil
@@ -392,6 +390,12 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 	} else {
 		idx = ctr.allocatedSubTrees
 		ctr.allocatedSubTrees += 1
+		err2 = ctr.cacheFile.Truncate(int64(
+			ctr.subTreeOffset(ctr.allocatedSubTrees)))
+		if err2 != nil {
+			return nil, false, wrapErrorf(err2,
+				"Failed to allocate space for subtree")
+		}
 		err = ctr.writeCacheHeader()
 		if err != nil {
 			return nil, false, err
@@ -427,8 +431,10 @@ func (ctr *fsContainer) ListSubTrees() ([]SubTreeAddress, Error) {
 	}
 
 	ret := make([]SubTreeAddress, len(ctr.cacheIdxLut))
+	i := 0
 	for addr, _ := range ctr.cacheIdxLut {
-		ret = append(ret, addr)
+		ret[i] = addr
+		i++
 	}
 	return ret, nil
 }
@@ -437,6 +443,9 @@ func (ctr *fsContainer) DropSubTree(address SubTreeAddress) Error {
 	if !ctr.cacheInitialized {
 		return errorf("Cache is not initialized")
 	}
+
+	// TODO decrement allocatedSubTrees and cacheFile.Truncate when
+	//      applicable to free disk space.
 
 	var err2 error
 
