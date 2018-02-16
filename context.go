@@ -1,6 +1,7 @@
 package xmssmt
 
 import (
+	"crypto/rand"
 	"fmt"
 	"reflect"
 )
@@ -130,7 +131,30 @@ func (err *errorImpl) Error() string {
 	return err.msg
 }
 
-// Derives an XMSS[MT} public/private keypair from the given seeds
+// Generates an XMSS[MT] public/private keypair from the given seeds
+// and stores it at the given path on the filesystem.
+// NOTE Do not forget to Close() the returned PrivateKey
+func (ctx *Context) GenerateKeyPair(path string) (
+	*PrivateKey, *PublicKey, Error) {
+	pubSeed := make([]byte, ctx.p.N)
+	skSeed := make([]byte, ctx.p.N)
+	skPrf := make([]byte, ctx.p.N)
+	_, err := rand.Read(pubSeed)
+	if err != nil {
+		return nil, nil, wrapErrorf(err, "crypto.rand.Read()")
+	}
+	_, err = rand.Read(skSeed)
+	if err != nil {
+		return nil, nil, wrapErrorf(err, "crypto.rand.Read()")
+	}
+	_, err = rand.Read(skPrf)
+	if err != nil {
+		return nil, nil, wrapErrorf(err, "crypto.rand.Read()")
+	}
+	return ctx.Derive(path, pubSeed, skSeed, skPrf)
+}
+
+// Derives an XMSS[MT] public/private keypair from the given seeds
 // and stores it at the given path on the filesystem.
 // NOTE Do not forget to Close() the returned PrivateKey
 func (ctx *Context) Derive(path string, pubSeed, skSeed, skPrf []byte) (
