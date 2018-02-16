@@ -77,7 +77,7 @@ type PublicKey struct {
 type Signature struct {
 	ctx   *Context       // context which contains algorithm parameter
 	seqNo SignatureSeqNo // sequence number of this signature. (Same as index.)
-	hash  []byte         // hash of the message
+	drv   []byte         // digest randomized value (R)
 
 	// The signature consists of several barebones XMSS signatures.
 	// sigs[0] signs hash, sigs[1] signs the root of the subtree for sigs[0],
@@ -103,6 +103,21 @@ type errorImpl struct {
 	msg    string
 	locked bool
 	inner  error
+}
+
+// Returns representation of signature as accepted by the refence
+// implementation (without the message).
+func (sig *Signature) Bytes() []byte {
+	ret := make([]byte, sig.ctx.sigBytes)
+	encodeUint64Into(uint64(sig.seqNo), ret[:sig.ctx.indexBytes])
+	copy(ret[sig.ctx.indexBytes:], sig.drv)
+	stOff := sig.ctx.indexBytes + sig.ctx.p.N
+	stLen := sig.ctx.wotsSigBytes + sig.ctx.p.N*sig.ctx.treeHeight
+	for i, stSig := range sig.sigs {
+		copy(ret[stOff+uint32(i)*stLen:], stSig.wotsSig)
+		copy(ret[stOff+uint32(i)*stLen+sig.ctx.wotsSigBytes:], stSig.authPath)
+	}
+	return ret
 }
 
 func (err *errorImpl) Locked() bool { return err.locked }
@@ -290,6 +305,7 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 		ctx:   sk.ctx,
 		seqNo: seqNo,
 		sigs:  make([]subTreeSig, len(staPath)),
+		drv:   sk.ctx.prfUint64(pad, uint64(seqNo), sk.skPrf),
 	}
 
 	// The tail of the signature is probably cached, retrieve (or create) it
@@ -306,13 +322,13 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 		wotsSig:  make([]byte, sk.ctx.wotsSigBytes),
 	}
 
-	// drv := sk.ctx.prfUint64(pad, uint64(seqNo), sk.skPrf)
+	mhash := sk.ctx.hashMessage(msg, sig.drv, sk.root, uint64(seqNo))
 	otsAddr := staPath[0].address()
 	otsAddr.setOTS(leafs[0])
-	// TODO correct
+
 	sk.ctx.wotsSignInto(
 		pad,
-		msg,
+		mhash,
 		sk.ctx.getWotsSeed(pad, sk.skSeed, otsAddr),
 		sk.pubSeed,
 		otsAddr,
@@ -421,7 +437,7 @@ func NewContextFromName(name string) *Context {
 func NewContext(params Params) (ctx *Context, err error) {
 	ctx = new(Context)
 	ctx.p = params
-	ctx.mt = (ctx.p.D == 1)
+	ctx.mt = (ctx.p.D > 1)
 
 	if params.FullHeight%params.D != 0 {
 		return nil, fmt.Errorf("D does not divide FullHeight")
