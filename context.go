@@ -106,9 +106,10 @@ type errorImpl struct {
 	inner  error
 }
 
-// Returns representation of signature as accepted by the refence
+// Returns representation of signature as accepted by the reference
 // implementation (without the message).
-func (sig *Signature) Bytes() []byte {
+// Will never return an error.
+func (sig *Signature) MarshalBinary() ([]byte, error) {
 	ret := make([]byte, sig.ctx.sigBytes)
 	encodeUint64Into(uint64(sig.seqNo), ret[:sig.ctx.indexBytes])
 	copy(ret[sig.ctx.indexBytes:], sig.drv)
@@ -118,7 +119,7 @@ func (sig *Signature) Bytes() []byte {
 		copy(ret[stOff+uint32(i)*stLen:], stSig.wotsSig)
 		copy(ret[stOff+uint32(i)*stLen+sig.ctx.wotsSigBytes:], stSig.authPath)
 	}
-	return ret
+	return ret, nil
 }
 
 func (err *errorImpl) Locked() bool { return err.locked }

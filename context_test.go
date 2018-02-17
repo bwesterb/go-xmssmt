@@ -47,7 +47,8 @@ func TestDeriveAndSign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sign(): %v", err)
 	}
-	valHash := sha256.Sum256(sig.Bytes())
+	sigBytes, _ := sig.MarshalBinary()
+	valHash := sha256.Sum256(sigBytes)
 	if hex.EncodeToString(valHash[:]) != "43d9769c0e51000137db4cb4c62cafd43b09dfec7f96a70636c959f020f28541" {
 		t.Fatalf("Wrong signature")
 	}
