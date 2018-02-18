@@ -36,18 +36,18 @@ func TestWotsGenChain(t *testing.T) {
 
 func testWotsPkGen(ctx *Context, expect string, t *testing.T) {
 	var pubSeed []byte = make([]byte, ctx.p.N)
-	var seed []byte = make([]byte, ctx.p.N)
+	var skSeed []byte = make([]byte, ctx.p.N)
 	var addr [8]uint32
 	for i := 0; i < int(ctx.p.N); i++ {
 		pubSeed[i] = byte(2 * i)
-		seed[i] = byte(i)
+		skSeed[i] = byte(i)
 	}
 	for i := 0; i < 8; i++ {
 		addr[i] = 500000000 * uint32(i)
 	}
 	valHash := sha256.Sum256(
-		ctx.wotsPkGen(ctx.newScratchPad(), seed,
-			ctx.precomputeHashes(pubSeed, nil), address(addr)))
+		ctx.wotsPkGen(ctx.newScratchPad(),
+			ctx.precomputeHashes(pubSeed, skSeed), address(addr)))
 	valHashPref := hex.EncodeToString(valHash[:8])
 	if valHashPref != expect {
 		t.Errorf("%s hash of wotsPkGen return value starts with %s instead of %s", ctx.Name(), valHashPref, expect)
@@ -55,27 +55,27 @@ func testWotsPkGen(ctx *Context, expect string, t *testing.T) {
 }
 
 func TestWotsPkGen(t *testing.T) {
-	testWotsPkGen(NewContextFromOid(false, 1), "4bad377b36d488f0", t)
-	testWotsPkGen(NewContextFromOid(false, 4), "2da374aa0c3c48cf", t)
-	testWotsPkGen(NewContextFromOid(false, 7), "a63529f0d6c4c965", t)
-	testWotsPkGen(NewContextFromOid(false, 10), "65ab3d40673846d7", t)
+	testWotsPkGen(NewContextFromOid(false, 1), "6a796e5e8c68a83d", t)
+	testWotsPkGen(NewContextFromOid(false, 4), "16d2cc6a8313c1ce", t)
+	testWotsPkGen(NewContextFromOid(false, 7), "c4bc21424790e484", t)
+	testWotsPkGen(NewContextFromOid(false, 10), "776f57dd57898069", t)
 }
 
 func testWotsSign(ctx *Context, expect string, t *testing.T) {
 	var pubSeed []byte = make([]byte, ctx.p.N)
-	var seed []byte = make([]byte, ctx.p.N)
+	var skSeed []byte = make([]byte, ctx.p.N)
 	var msg []byte = make([]byte, ctx.p.N)
 	var addr [8]uint32
 	for i := 0; i < int(ctx.p.N); i++ {
 		pubSeed[i] = byte(2 * i)
-		seed[i] = byte(i)
+		skSeed[i] = byte(i)
 		msg[i] = byte(3 * i)
 	}
 	for i := 0; i < 8; i++ {
 		addr[i] = 500000000 * uint32(i)
 	}
 	valHash := sha256.Sum256(
-		ctx.wotsSign(ctx.newScratchPad(), msg, seed, pubSeed, address(addr)))
+		ctx.wotsSign(ctx.newScratchPad(), msg, pubSeed, skSeed, address(addr)))
 	valHashPref := hex.EncodeToString(valHash[:8])
 	if valHashPref != expect {
 		t.Errorf("%s hash of wotsSign return value starts with %s instead of %s", ctx.Name(), valHashPref, expect)
@@ -83,30 +83,30 @@ func testWotsSign(ctx *Context, expect string, t *testing.T) {
 }
 
 func TestWotsSign(t *testing.T) {
-	testWotsSign(NewContextFromOid(false, 1), "ddef75e06556e4a0", t)
-	testWotsSign(NewContextFromOid(false, 4), "eaca616e882a8afc", t)
-	testWotsSign(NewContextFromOid(false, 7), "03c64b093f123bb9", t)
-	testWotsSign(NewContextFromOid(false, 10), "3b526d0b89d463c7", t)
+	testWotsSign(NewContextFromOid(false, 1), "81aae34c799751d3", t)
+	testWotsSign(NewContextFromOid(false, 4), "f3506bcdddda4a6b", t)
+	testWotsSign(NewContextFromOid(false, 7), "d68aaeaddda3d555", t)
+	testWotsSign(NewContextFromOid(false, 10), "f530147152ac0893", t)
 }
 
 func testWotSignThenVerify(ctx *Context, t *testing.T) {
 	var pubSeed []byte = make([]byte, ctx.p.N)
-	var seed []byte = make([]byte, ctx.p.N)
+	var skSeed []byte = make([]byte, ctx.p.N)
 	var msg []byte = make([]byte, ctx.p.N)
 	var addr [8]uint32
 	for i := 0; i < int(ctx.p.N); i++ {
 		pubSeed[i] = byte(2 * i)
-		seed[i] = byte(i)
+		skSeed[i] = byte(i)
 		msg[i] = byte(3 * i)
 	}
 	for i := 0; i < 8; i++ {
 		addr[i] = 500000000 * uint32(i)
 	}
-	sig := ctx.wotsSign(ctx.newScratchPad(), msg, seed, pubSeed, address(addr))
+	sig := ctx.wotsSign(ctx.newScratchPad(), msg, pubSeed, skSeed, address(addr))
 	pk1 := ctx.wotsPkFromSig(ctx.newScratchPad(), sig, msg,
 		ctx.precomputeHashes(pubSeed, nil), address(addr))
-	pk2 := ctx.wotsPkGen(ctx.newScratchPad(), seed,
-		ctx.precomputeHashes(pubSeed, nil), address(addr))
+	pk2 := ctx.wotsPkGen(ctx.newScratchPad(),
+		ctx.precomputeHashes(pubSeed, skSeed), address(addr))
 	if !bytes.Equal(pk1, pk2) {
 		t.Errorf("%s verification of signature failed", ctx.Name())
 	}

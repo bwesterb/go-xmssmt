@@ -281,7 +281,6 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 	sk.ctx.wotsSignInto(
 		pad,
 		mt.Root(),
-		sk.ctx.getWotsSeed(pad, sk.ph, otsAddr),
 		sk.ph,
 		otsAddr,
 		wotsSig)
@@ -358,7 +357,6 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 	sk.ctx.wotsSignInto(
 		pad,
 		mhash,
-		sk.ctx.getWotsSeed(pad, sk.ph, otsAddr),
 		sk.ph,
 		otsAddr,
 		sig.sigs[0].wotsSig)
@@ -665,14 +663,18 @@ func (pad scratchPad) prfAddrBuf() []byte {
 	return pad.buf[9*pad.n+32 : 9*pad.n+64]
 }
 
+func (pad scratchPad) wotsSkSeedBuf() []byte {
+	return pad.buf[9*pad.n+64 : 10*pad.n+64]
+}
+
 func (pad scratchPad) wotsBuf() []byte {
-	return pad.buf[9*pad.n+64:]
+	return pad.buf[10*pad.n+64:]
 }
 
 func (ctx *Context) newScratchPad() scratchPad {
 	n := ctx.p.N
 	pad := scratchPad{
-		buf:  make([]byte, 9*n+64+ctx.p.N*ctx.wotsLen),
+		buf:  make([]byte, 10*n+64+ctx.p.N*ctx.wotsLen),
 		n:    n,
 		hash: ctx.newHashScratchPad(),
 	}

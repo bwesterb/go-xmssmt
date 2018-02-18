@@ -1,17 +1,16 @@
 package xmssmt
 
-// Expands seed to WOTS+ secret key
-func (ctx *Context) wotsExpandSeed(pad scratchPad, in []byte) []byte {
-	ret := make([]byte, ctx.p.N*ctx.wotsLen)
-	ctx.wotsExpandSeedInto(pad, in, ret)
-	return ret
-}
-
-// Expands seed to WOTS+ secret key
-func (ctx *Context) wotsExpandSeedInto(pad scratchPad, in, out []byte) {
+// Generate WOTS+ secret key
+func (ctx *Context) genWotsSk(pad scratchPad, ph precomputedHashes,
+	addr address, out []byte) {
 	var i uint32
+	addr.setChain(0)
+	addr.setHash(0)
+	addr.setKeyAndMask(0)
+	buf := pad.wotsSkSeedBuf()
+	ph.prfAddrSkSeedInto(pad, addr, buf)
 	for i = 0; i < ctx.wotsLen; i++ {
-		ctx.prfUint64Into(pad, uint64(i), in, out[i*ctx.p.N:])
+		ctx.prfUint64Into(pad, uint64(i), buf, out[i*ctx.p.N:])
 	}
 }
 
@@ -72,17 +71,17 @@ func (ctx *Context) wotsGenChainInto(pad scratchPad, in []byte,
 }
 
 // Generate a WOTS+ public key from secret key seed.
-func (ctx *Context) wotsPkGen(pad scratchPad, seed []byte,
-	ph precomputedHashes, addr address) []byte {
+func (ctx *Context) wotsPkGen(pad scratchPad, ph precomputedHashes,
+	addr address) []byte {
 	ret := make([]byte, ctx.wotsLen*ctx.p.N)
-	ctx.wotsPkGenInto(pad, seed, ph, addr, ret)
+	ctx.wotsPkGenInto(pad, ph, addr, ret)
 	return ret
 }
 
 // Generate a WOTS+ public key from secret key seed.
-func (ctx *Context) wotsPkGenInto(pad scratchPad, seed []byte,
-	ph precomputedHashes, addr address, out []byte) {
-	ctx.wotsExpandSeedInto(pad, seed, out)
+func (ctx *Context) wotsPkGenInto(pad scratchPad, ph precomputedHashes,
+	addr address, out []byte) {
+	ctx.genWotsSk(pad, ph, addr, out)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
@@ -93,19 +92,18 @@ func (ctx *Context) wotsPkGenInto(pad scratchPad, seed []byte,
 }
 
 // Create a WOTS+ signature of a n-byte message
-func (ctx *Context) wotsSign(pad scratchPad, msg, seed, pubSeed []byte,
+func (ctx *Context) wotsSign(pad scratchPad, msg, pubSeed, skSeed []byte,
 	addr address) []byte {
 	ret := make([]byte, ctx.wotsSigBytes)
-	// TODO skSeed into precomputeHashes?
-	ctx.wotsSignInto(pad, msg, seed, ctx.precomputeHashes(pubSeed, nil), addr, ret)
+	ctx.wotsSignInto(pad, msg, ctx.precomputeHashes(pubSeed, skSeed), addr, ret)
 	return ret
 }
 
 // Create a WOTS+ signature of a n-byte message
-func (ctx *Context) wotsSignInto(pad scratchPad, msg, seed []byte,
+func (ctx *Context) wotsSignInto(pad scratchPad, msg []byte,
 	ph precomputedHashes, addr address, wotsSig []byte) {
 	lengths := ctx.wotsChainLengths(msg)
-	ctx.wotsExpandSeedInto(pad, seed, wotsSig)
+	ctx.genWotsSk(pad, ph, addr, wotsSig)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))

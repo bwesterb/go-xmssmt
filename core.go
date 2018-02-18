@@ -194,8 +194,7 @@ func (ctx *Context) lTree(pad scratchPad, wotsPk []byte, ph precomputedHashes,
 func (ctx *Context) genLeaf(pad scratchPad, skSeed []byte, ph precomputedHashes,
 	lTreeAddr, otsAddr address) []byte {
 	pk := pad.wotsBuf()
-	seed := ctx.getWotsSeed(pad, ph, otsAddr)
-	ctx.wotsPkGenInto(pad, seed, ph, otsAddr, pk)
+	ctx.wotsPkGenInto(pad, ph, otsAddr, pk)
 	return ctx.lTree(pad, pk, ph, lTreeAddr)
 }
 
