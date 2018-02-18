@@ -27,29 +27,29 @@ func TestHashMessage(t *testing.T) {
 }
 
 func testPrf(ctx *Context, expect string, t *testing.T) {
-	var in []byte = make([]byte, 32)
+	var addr address
 	var key []byte = make([]byte, ctx.p.N)
-	for i := 0; i < 32; i++ {
-		in[i] = byte(i)
+	for i := 0; i < 8; i++ {
+		addr[i] = uint32(i)
 	}
 	for i := 0; i < int(ctx.p.N); i++ {
 		key[i] = byte(i)
 	}
-	val := hex.EncodeToString(ctx.prf(in, key))
+	val := hex.EncodeToString(ctx.prfAddr(ctx.newScratchPad(), addr, key))
 	if val != expect {
 		t.Errorf("%s prf is %s instead of %s", ctx.Name(), val, expect)
 	}
 }
 
 func TestPrf(t *testing.T) {
-	testPrf(NewContextFromOid(false, 1), "5b34e697465ed81910e190cbd8352daa476d71fe1a84e698b6417c41a0bf9e2c", t)
-	testPrf(NewContextFromOid(false, 4), "7dc67cf82dc43ac1b054fefaa0c3a6ad3feb9b90495170902f9eb7b471000bee1789477aa7e7a988b4953bad0c0a7beeca108f9cf99a5eda8954a0e6803b5a93", t)
-	testPrf(NewContextFromOid(false, 7), "da9469a708f4c15973880031f05f02c8e4ceb3c0b24d10087bad1107dc8b9cff", t)
-	testPrf(NewContextFromOid(false, 10), "d61c393006402e9f6757cf6fbf4bb6f4541fd90ab0b1b243624bbfcd7dca15a62c83fc16d64666a87dbcc9b37038866d4a24fec910229f2139ff8dbcb9637dd9", t)
-	testPrf(NewContextFromOid(true, 1), "5b34e697465ed81910e190cbd8352daa476d71fe1a84e698b6417c41a0bf9e2c", t)
-	testPrf(NewContextFromOid(true, 9), "7dc67cf82dc43ac1b054fefaa0c3a6ad3feb9b90495170902f9eb7b471000bee1789477aa7e7a988b4953bad0c0a7beeca108f9cf99a5eda8954a0e6803b5a93", t)
-	testPrf(NewContextFromOid(true, 17), "da9469a708f4c15973880031f05f02c8e4ceb3c0b24d10087bad1107dc8b9cff", t)
-	testPrf(NewContextFromOid(true, 25), "d61c393006402e9f6757cf6fbf4bb6f4541fd90ab0b1b243624bbfcd7dca15a62c83fc16d64666a87dbcc9b37038866d4a24fec910229f2139ff8dbcb9637dd9", t)
+	testPrf(NewContextFromOid(false, 1), "c2d06093b5c98d5a6274066c923e194f18e53eeaf533bca12b92b789eb6866f0", t)
+	testPrf(NewContextFromOid(false, 4), "15a9ffa22a35fdf1308f08d7bfff0b049b3e4e93bbc1252f56846c775ccb00e6476073f6b02f2aba9ea514d497f6a4e71799e32ef2dfbb1f83b189f16d2acfa8", t)
+	testPrf(NewContextFromOid(false, 7), "d8a7a685a78ac5f061b74a7ea9b3c0d5a2777999ddbb34bfec1877c4ae3070e1", t)
+	testPrf(NewContextFromOid(false, 10), "01c350393a99aed6a215ec5369bc982a544a04a803796d31c11f32eaa07710e14a6548670b18c45ea91b36df4ee6225cb936e0639f4f344519a875aef6a492e9", t)
+	testPrf(NewContextFromOid(true, 1), "c2d06093b5c98d5a6274066c923e194f18e53eeaf533bca12b92b789eb6866f0", t)
+	testPrf(NewContextFromOid(true, 9), "15a9ffa22a35fdf1308f08d7bfff0b049b3e4e93bbc1252f56846c775ccb00e6476073f6b02f2aba9ea514d497f6a4e71799e32ef2dfbb1f83b189f16d2acfa8", t)
+	testPrf(NewContextFromOid(true, 17), "d8a7a685a78ac5f061b74a7ea9b3c0d5a2777999ddbb34bfec1877c4ae3070e1", t)
+	testPrf(NewContextFromOid(true, 25), "01c350393a99aed6a215ec5369bc982a544a04a803796d31c11f32eaa07710e14a6548670b18c45ea91b36df4ee6225cb936e0639f4f344519a875aef6a492e9", t)
 }
 
 func testF(ctx *Context, expect string, t *testing.T) {

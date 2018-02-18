@@ -66,24 +66,6 @@ func (ctx *Context) prfAddrInto(pad scratchPad, addr address, key, out []byte) {
 	ctx.hashInto(buf, out)
 }
 
-// Compute PRF(key, in).
-// in must be 32 bytes and key must be N bytes.
-func (ctx *Context) prf(in, key []byte) []byte {
-	ret := make([]byte, ctx.p.N)
-	ctx.prfInto(ctx.newScratchPad(), in, key, ret)
-	return ret
-}
-
-// Compute PRF(key, in) and put it into out
-// in must be 32 bytes and key must be N bytes.
-func (ctx *Context) prfInto(pad scratchPad, in, key, out []byte) {
-	buf := pad.prfBuf()
-	encodeUint64Into(HASH_PADDING_PRF, buf[:ctx.p.N])
-	copy(buf[ctx.p.N:], key)
-	copy(buf[ctx.p.N*2:], in)
-	ctx.hashInto(buf, out)
-}
-
 // Compute hash of a message and put it into out
 func (ctx *Context) hashMessage(msg, R, root []byte, idx uint64) []byte {
 	ret := make([]byte, ctx.p.N)
