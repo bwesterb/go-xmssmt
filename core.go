@@ -66,7 +66,8 @@ func (mt *merkleTree) AuthPath(leaf uint32) []byte {
 func (ctx *Context) genSubTree(pad scratchPad, skSeed, pubSeed []byte,
 	addr address) merkleTree {
 	mt := newMerkleTree(ctx.treeHeight+1, ctx.p.N)
-	ctx.genSubTreeInto(pad, skSeed, ctx.precomputeHashes(pubSeed), addr, mt)
+	ctx.genSubTreeInto(pad, skSeed, ctx.precomputeHashes(pubSeed, skSeed),
+		addr, mt)
 	return mt
 }
 
@@ -193,19 +194,21 @@ func (ctx *Context) lTree(pad scratchPad, wotsPk []byte, ph precomputedHashes,
 func (ctx *Context) genLeaf(pad scratchPad, skSeed []byte, ph precomputedHashes,
 	lTreeAddr, otsAddr address) []byte {
 	pk := pad.wotsBuf()
-	seed := ctx.getWotsSeed(pad, skSeed, otsAddr)
+	seed := ctx.getWotsSeed(pad, ph, otsAddr)
 	ctx.wotsPkGenInto(pad, seed, ph, otsAddr, pk)
 	return ctx.lTree(pad, pk, ph, lTreeAddr)
 }
 
 // Derive the seed for the WOTS+ key pair at the given address
 // from the secret key seed
-func (ctx *Context) getWotsSeed(pad scratchPad, skSeed []byte,
+func (ctx *Context) getWotsSeed(pad scratchPad, ph precomputedHashes,
 	addr address) []byte {
 	addr.setChain(0)
 	addr.setHash(0)
 	addr.setKeyAndMask(0)
-	return ctx.prfAddr(pad, addr, skSeed)
+	ret := make([]byte, ctx.p.N)
+	ph.prfAddrSkSeedInto(pad, addr, ret)
+	return ret
 }
 
 // Returns the path of subtrees associated to signature sequence number.

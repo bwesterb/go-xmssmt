@@ -17,37 +17,55 @@ const (
 	HASH_PADDING_PRF  = 3
 )
 
+// Many of the hashes that we compute share the same prefix.  If this prefix
+// is longer than the "rate" of the hash, then we can reduce the compution
+// by precomputing the state of the hashes after consuming these common
+// prefixes.  This struct contains the functions that encapsulate the
+// precomputed hashes.
 type precomputedHashes struct {
 	// Precomputed prfAddrInto for the current pubSeed
 	prfAddrPubSeedInto func(pad scratchPad, addr address, out []byte)
+
+	// Precomputed prfAddrInto for the current skSeed
+	prfAddrSkSeedInto func(pad scratchPad, addr address, out []byte)
 }
 
+// Contains preallocated hashes to prevent allocation.  See scratchPad.
 type hashScratchPad struct {
 	h     hash.Hash
 	hV    reflect.Value
 	shake sha3.ShakeHash
 }
 
-func (ctx *Context) precomputeHashes(pubSeed []byte) (ph precomputedHashes) {
+func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
+	ph precomputedHashes) {
 	if ctx.p.Func == SHA2 {
-		var h hash.Hash
+		var hPrfSk, hPrfPub hash.Hash
 		if ctx.p.N == 32 {
-			h = sha256.New()
+			hPrfSk = sha256.New()
+			hPrfPub = sha256.New()
 		} else { // N == 64
-			h = sha512.New()
+			hPrfSk = sha512.New()
+			hPrfPub = sha512.New()
 		}
-		h.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.p.N)))
-		h.Write(pubSeed)
+
+		if skSeed != nil {
+			hPrfSk.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.p.N)))
+			hPrfSk.Write(skSeed)
+		}
+
+		hPrfPub.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.p.N)))
+		hPrfPub.Write(pubSeed)
 
 		// This might break if sha{256,512}.digest is changed in the future,
 		// but it's much better than using the encoding.Binary(Un)marshaler
 		// interface as that forces allocations.
 		// See https://stackoverflow.com/questions/45385707/
-		hV := reflect.ValueOf(h).Elem()
+		hVprfPub := reflect.ValueOf(hPrfPub).Elem()
+		hVskPub := reflect.ValueOf(hPrfSk).Elem()
 
-		ph.prfAddrPubSeedInto = func(pad scratchPad, addr address,
-			out []byte) {
-			pad.hash.hV.Set(hV)
+		ph.prfAddrPubSeedInto = func(pad scratchPad, addr address, out []byte) {
+			pad.hash.hV.Set(hVprfPub)
 			addrBuf := pad.prfAddrBuf()
 			addr.writeInto(addrBuf)
 			pad.hash.h.Write(addrBuf)
@@ -55,6 +73,18 @@ func (ctx *Context) precomputeHashes(pubSeed []byte) (ph precomputedHashes) {
 			// hash.Sum append()s the hash to the input byte slice.  As our
 			// input byte slice has enough capacity, it will write it in out.
 			pad.hash.h.Sum(out[:0])
+		}
+
+		if skSeed == nil {
+			return
+		}
+
+		ph.prfAddrSkSeedInto = func(pad scratchPad, addr address, out []byte) {
+			pad.hash.hV.Set(hVskPub)
+			addrBuf := pad.prfAddrBuf()
+			addr.writeInto(addrBuf)
+			pad.hash.h.Write(addrBuf)
+			pad.hash.h.Sum(out[:0]) // see above
 		}
 	} else { // SHAKE
 		// The rates of Shake128 and Shake256 are so high (136 resp. 168)
@@ -68,6 +98,23 @@ func (ctx *Context) precomputeHashes(pubSeed []byte) (ph precomputedHashes) {
 			addr.writeInto(addrBuf)
 			h.Write(prefBuf)
 			h.Write(pubSeed)
+			h.Write(addrBuf)
+			h.Read(out[:pad.n])
+		}
+
+		if skSeed == nil {
+			return
+		}
+
+		ph.prfAddrSkSeedInto = func(pad scratchPad, addr address, out []byte) {
+			h := pad.hash.shake
+			addrBuf := pad.prfAddrBuf()
+			h.Reset()
+			prefBuf := pad.prfBuf()[:ctx.p.N]
+			encodeUint64Into(HASH_PADDING_PRF, prefBuf)
+			addr.writeInto(addrBuf)
+			h.Write(prefBuf)
+			h.Write(skSeed)
 			h.Write(addrBuf)
 			h.Read(out[:pad.n])
 		}
@@ -148,7 +195,8 @@ func (ctx *Context) hashMessageInto(pad scratchPad, msg, R, root []byte,
 // Compute the hash f used in WOTS+
 func (ctx *Context) f(in, pubSeed []byte, addr address) []byte {
 	ret := make([]byte, ctx.p.N)
-	ctx.fInto(ctx.newScratchPad(), in, ctx.precomputeHashes(pubSeed), addr, ret)
+	ctx.fInto(ctx.newScratchPad(), in, ctx.precomputeHashes(pubSeed, nil),
+		addr, ret)
 	return ret
 }
 
@@ -168,8 +216,8 @@ func (ctx *Context) fInto(pad scratchPad, in []byte, ph precomputedHashes,
 // Compute RAND_HASH used to hash up various trees
 func (ctx *Context) h(left, right, pubSeed []byte, addr address) []byte {
 	ret := make([]byte, ctx.p.N)
-	ctx.hInto(ctx.newScratchPad(), left, right, ctx.precomputeHashes(pubSeed),
-		addr, ret)
+	ctx.hInto(ctx.newScratchPad(), left, right,
+		ctx.precomputeHashes(pubSeed, nil), addr, ret)
 	return ret
 }
 

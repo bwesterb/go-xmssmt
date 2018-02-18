@@ -19,7 +19,7 @@ func testLTree(ctx *Context, expect string, t *testing.T) {
 		addr[i] = 500000000 * uint32(i)
 	}
 	val := hex.EncodeToString(ctx.lTree(ctx.newScratchPad(), pk,
-		ctx.precomputeHashes(pubSeed), address(addr)))
+		ctx.precomputeHashes(pubSeed, nil), address(addr)))
 	if val != expect {
 		t.Errorf("%s ltree returned %s instead of %s", ctx.Name(), val, expect)
 	}
@@ -42,7 +42,7 @@ func testGetWotsSeed(ctx *Context, expect string, t *testing.T) {
 		addr[i] = 500000000 * uint32(i)
 	}
 	val := hex.EncodeToString(ctx.getWotsSeed(ctx.newScratchPad(),
-		skSeed, addr))
+		ctx.precomputeHashes(skSeed, skSeed), addr))
 	if val != expect {
 		t.Errorf("%s getWotsSeed returned %s instead of %s", ctx.Name(), val, expect)
 	}
@@ -68,7 +68,7 @@ func testGenLeaf(ctx *Context, expect string, t *testing.T) {
 		lTreeAddr[i] = 400000000 * uint32(i)
 	}
 	val := hex.EncodeToString(ctx.genLeaf(ctx.newScratchPad(),
-		skSeed, ctx.precomputeHashes(pubSeed), lTreeAddr, otsAddr))
+		skSeed, ctx.precomputeHashes(pubSeed, skSeed), lTreeAddr, otsAddr))
 	if val != expect {
 		t.Errorf("%s genLeaf returned %s instead of %s", ctx.Name(), val, expect)
 	}
@@ -178,7 +178,7 @@ func benchmarkGenLeaf(ctx *Context, b *testing.B) {
 	var lTreeAddr, otsAddr address
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ctx.genLeaf(ctx.newScratchPad(), skSeed, ctx.precomputeHashes(pubSeed),
-			lTreeAddr, otsAddr)
+		ctx.genLeaf(ctx.newScratchPad(), skSeed,
+			ctx.precomputeHashes(pubSeed, skSeed), lTreeAddr, otsAddr)
 	}
 }

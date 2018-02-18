@@ -20,7 +20,7 @@ func testWotsGenChain(ctx *Context, expect string, t *testing.T) {
 	}
 	ret := make([]byte, ctx.p.N)
 	ctx.wotsGenChainInto(ctx.newScratchPad(), in, 4, 5,
-		ctx.precomputeHashes(pubSeed), address(addr), ret)
+		ctx.precomputeHashes(pubSeed, nil), address(addr), ret)
 	val := hex.EncodeToString(ret)
 	if val != expect {
 		t.Errorf("%s wotsGenChain returned %s instead of %s", ctx.Name(), val, expect)
@@ -47,7 +47,7 @@ func testWotsPkGen(ctx *Context, expect string, t *testing.T) {
 	}
 	valHash := sha256.Sum256(
 		ctx.wotsPkGen(ctx.newScratchPad(), seed,
-			ctx.precomputeHashes(pubSeed), address(addr)))
+			ctx.precomputeHashes(pubSeed, nil), address(addr)))
 	valHashPref := hex.EncodeToString(valHash[:8])
 	if valHashPref != expect {
 		t.Errorf("%s hash of wotsPkGen return value starts with %s instead of %s", ctx.Name(), valHashPref, expect)
@@ -104,9 +104,9 @@ func testWotSignThenVerify(ctx *Context, t *testing.T) {
 	}
 	sig := ctx.wotsSign(ctx.newScratchPad(), msg, seed, pubSeed, address(addr))
 	pk1 := ctx.wotsPkFromSig(ctx.newScratchPad(), sig, msg,
-		ctx.precomputeHashes(pubSeed), address(addr))
-	pk2 := ctx.wotsPkGen(ctx.newScratchPad(), seed, ctx.precomputeHashes(pubSeed),
-		address(addr))
+		ctx.precomputeHashes(pubSeed, nil), address(addr))
+	pk2 := ctx.wotsPkGen(ctx.newScratchPad(), seed,
+		ctx.precomputeHashes(pubSeed, nil), address(addr))
 	if !bytes.Equal(pk1, pk2) {
 		t.Errorf("%s verification of signature failed", ctx.Name())
 	}

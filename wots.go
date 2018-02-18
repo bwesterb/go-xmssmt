@@ -96,7 +96,8 @@ func (ctx *Context) wotsPkGenInto(pad scratchPad, seed []byte,
 func (ctx *Context) wotsSign(pad scratchPad, msg, seed, pubSeed []byte,
 	addr address) []byte {
 	ret := make([]byte, ctx.wotsSigBytes)
-	ctx.wotsSignInto(pad, msg, seed, ctx.precomputeHashes(pubSeed), addr, ret)
+	// TODO skSeed into precomputeHashes?
+	ctx.wotsSignInto(pad, msg, seed, ctx.precomputeHashes(pubSeed, nil), addr, ret)
 	return ret
 }
 

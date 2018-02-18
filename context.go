@@ -191,7 +191,7 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 	sk := PrivateKey{
 		ctx:     ctx,
 		pubSeed: pubSeed,
-		ph:      ctx.precomputeHashes(pubSeed),
+		ph:      ctx.precomputeHashes(pubSeed, skSeed),
 		skSeed:  skSeed,
 		seqNo:   0,
 		skPrf:   skPrf,
@@ -208,7 +208,7 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 	pk := PublicKey{
 		ctx:     ctx,
 		pubSeed: pubSeed,
-		ph:      ctx.precomputeHashes(pubSeed),
+		ph:      ctx.precomputeHashes(pubSeed, nil),
 		root:    sk.root,
 	}
 
@@ -281,7 +281,7 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 	sk.ctx.wotsSignInto(
 		pad,
 		mt.Root(),
-		sk.ctx.getWotsSeed(pad, sk.skSeed, otsAddr),
+		sk.ctx.getWotsSeed(pad, sk.ph, otsAddr),
 		sk.ph,
 		otsAddr,
 		wotsSig)
@@ -358,7 +358,7 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 	sk.ctx.wotsSignInto(
 		pad,
 		mhash,
-		sk.ctx.getWotsSeed(pad, sk.skSeed, otsAddr),
+		sk.ctx.getWotsSeed(pad, sk.ph, otsAddr),
 		sk.ph,
 		otsAddr,
 		sig.sigs[0].wotsSig)
