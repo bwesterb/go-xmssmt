@@ -135,17 +135,29 @@ func TestMerkleTree(t *testing.T) {
 	}
 }
 
-func BenchmarkGenSubTreeSHA2_256(b *testing.B) {
+func BenchmarkGenSubTree5SHA2_256(b *testing.B) {
 	benchmarkGenSubTree(NewContextFromOid(true, 0x8), b)
 }
-func BenchmarkGenSubTreeSHA2_512(b *testing.B) {
+func BenchmarkGenSubTree5SHA2_512(b *testing.B) {
 	benchmarkGenSubTree(NewContextFromOid(true, 0x10), b)
 }
-func BenchmarkGenSubTreeSHAKE_256(b *testing.B) {
+func BenchmarkGenSubTree5SHAKE_256(b *testing.B) {
 	benchmarkGenSubTree(NewContextFromOid(true, 0x18), b)
 }
-func BenchmarkGenSubTreeSHAKE_512(b *testing.B) {
+func BenchmarkGenSubTree5SHAKE_512(b *testing.B) {
 	benchmarkGenSubTree(NewContextFromOid(true, 0x20), b)
+}
+func BenchmarkGenSubTree10SHA2_256(b *testing.B) {
+	if testing.Short() {
+		b.Skip("Skipping genSubTree 2^10")
+	}
+	benchmarkGenSubTree(NewContextFromOid(false, 0x1), b)
+}
+func BenchmarkGenSubTree16SHA2_256(b *testing.B) {
+	if testing.Short() {
+		b.Skip("Skipping genSubTree 2^16")
+	}
+	benchmarkGenSubTree(NewContextFromOid(false, 0x2), b)
 }
 
 func benchmarkGenSubTree(ctx *Context, b *testing.B) {
