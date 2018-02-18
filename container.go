@@ -560,7 +560,7 @@ func (ctr *fsContainer) writeKeyFile() Error {
 
 	// (1) Write to a temp file.  (2) fsync this tempfile to get the data out.
 	// (3) Rename the tempfile to the acutal key file.  (4) Finally, fsync
-	// the key file.
+	// the parent directory.
 	tmpPath := ctr.path + ".tmp"
 	tmpFile, err := os.OpenFile(
 		tmpPath,
@@ -603,21 +603,25 @@ func (ctr *fsContainer) writeKeyFile() Error {
 		return wrapErrorf(err, "failed to replace key file")
 	}
 
-	// (4) Sync the key file.  If this fails we have no way of knowing whether
-	// the changes have been written out to disk.  We will assume that it did
-	// not, so that we won't reuse signatures.
-	file, err := os.Open(ctr.path)
+	// (4) Sync the parent directory.  If this fails we have no way of knowing
+	// whether  the changes have been written out to disk.  We will assume that
+	// it did not, so that we won't reuse signatures.
+	dirName := filepath.Dir(ctr.path)
+	dirFd, err := syscall.Open(
+		filepath.Dir(ctr.path),
+		syscall.O_DIRECTORY,
+		syscall.O_RDWR)
 	if err != nil {
+		return wrapErrorf(err, "failed to sync key file: open(%s):", dirName)
+	}
+
+	if err = syscall.Fsync(dirFd); err != nil {
+		syscall.Close(dirFd)
 		return wrapErrorf(err, "failed to sync key file")
 	}
 
-	if err = file.Sync(); err != nil {
-		file.Close()
-		return wrapErrorf(err, "failed to sync key file")
-	}
-
-	if err = file.Close(); err != nil {
-		return wrapErrorf(err, "failed to sync key file")
+	if err = syscall.Close(dirFd); err != nil {
+		return wrapErrorf(err, "failed to sync key file (close)")
 	}
 
 	return nil
