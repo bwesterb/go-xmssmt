@@ -665,10 +665,14 @@ func (pad scratchPad) prfAddrBuf() []byte {
 	return pad.buf[9*pad.n+32 : 9*pad.n+64]
 }
 
+func (pad scratchPad) wotsBuf() []byte {
+	return pad.buf[9*pad.n+64:]
+}
+
 func (ctx *Context) newScratchPad() scratchPad {
 	n := ctx.p.N
 	pad := scratchPad{
-		buf:  make([]byte, 9*n+64),
+		buf:  make([]byte, 9*n+64+ctx.p.N*ctx.wotsLen),
 		n:    n,
 		hash: ctx.newHashScratchPad(),
 	}

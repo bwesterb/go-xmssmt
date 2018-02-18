@@ -74,15 +74,22 @@ func (ctx *Context) wotsGenChainInto(pad scratchPad, in []byte,
 // Generate a WOTS+ public key from secret key seed.
 func (ctx *Context) wotsPkGen(pad scratchPad, seed []byte,
 	ph precomputedHashes, addr address) []byte {
-	buf := ctx.wotsExpandSeed(pad, seed)
+	ret := make([]byte, ctx.wotsLen*ctx.p.N)
+	ctx.wotsPkGenInto(pad, seed, ph, addr, ret)
+	return ret
+}
+
+// Generate a WOTS+ public key from secret key seed.
+func (ctx *Context) wotsPkGenInto(pad scratchPad, seed []byte,
+	ph precomputedHashes, addr address, out []byte) {
+	ctx.wotsExpandSeedInto(pad, seed, out)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
-		ctx.wotsGenChainInto(pad, buf[ctx.p.N*i:ctx.p.N*(i+1)],
+		ctx.wotsGenChainInto(pad, out[ctx.p.N*i:ctx.p.N*(i+1)],
 			0, ctx.p.WotsW-1, ph, addr,
-			buf[ctx.p.N*i:ctx.p.N*(i+1)])
+			out[ctx.p.N*i:ctx.p.N*(i+1)])
 	}
-	return buf
 }
 
 // Create a WOTS+ signature of a n-byte message
