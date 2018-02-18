@@ -3,6 +3,8 @@ package xmssmt
 import (
 	"crypto/sha256"
 	"crypto/sha512"
+	"hash"
+	"reflect"
 
 	"github.com/templexxx/xor"
 	"golang.org/x/crypto/sha3"
@@ -14,6 +16,64 @@ const (
 	HASH_PADDING_HASH = 2
 	HASH_PADDING_PRF  = 3
 )
+
+type precomputedHashes struct {
+	// Precomputed prfAddrInto for the current pubSeed
+	prfAddrPubSeedInto func(pad scratchPad, addr address, out []byte)
+}
+
+type hashScratchPad struct {
+	h  hash.Hash
+	hV reflect.Value
+}
+
+func (ctx *Context) precomputeHashes(pubSeed []byte) (ph precomputedHashes) {
+	if ctx.p.Func == SHA2 {
+		var h hash.Hash
+		if ctx.p.N == 32 {
+			h = sha256.New()
+		} else { // N == 64
+			h = sha512.New()
+		}
+		h.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.p.N)))
+		h.Write(pubSeed)
+
+		// This might break if sha{256,512}.digest is changed in the future,
+		// but it's much better than using the encoding.Binary(Un)marshaler
+		// interface as that forces allocations.
+		// See https://stackoverflow.com/questions/45385707/
+		hV := reflect.ValueOf(h).Elem()
+
+		ph.prfAddrPubSeedInto = func(pad scratchPad, addr address,
+			out []byte) {
+			pad.hash.hV.Set(hV)
+			addrBuf := pad.prfAddrBuf()
+			addr.writeInto(addrBuf)
+			pad.hash.h.Write(addrBuf)
+
+			// hash.Sum append()s the hash to the input byte slice.  As our
+			// input byte slice has enough capacity, it will write it in out.
+			pad.hash.h.Sum(out[:0])
+		}
+	} else { // SHAKE
+		var h sha3.ShakeHash
+		if ctx.p.N == 32 {
+			h = sha3.NewShake128()
+		} else {
+			h = sha3.NewShake256()
+		}
+		h.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.p.N)))
+		h.Write(pubSeed)
+		ph.prfAddrPubSeedInto = func(pad scratchPad, addr address, out []byte) {
+			h2 := h.Clone()
+			addrBuf := pad.prfAddrBuf()
+			addr.writeInto(addrBuf)
+			h2.Write(addrBuf)
+			h2.Read(out[:pad.n])
+		}
+	}
+	return
+}
 
 // Compute the hash of in.  out must be a n-byte slice.
 func (ctx *Context) hashInto(in, out []byte) {
@@ -87,19 +147,19 @@ func (ctx *Context) hashMessageInto(msg, R, root []byte, idx uint64, out []byte)
 // Compute the hash f used in WOTS+
 func (ctx *Context) f(in, pubSeed []byte, addr address) []byte {
 	ret := make([]byte, ctx.p.N)
-	ctx.fInto(ctx.newScratchPad(), in, pubSeed, addr, ret)
+	ctx.fInto(ctx.newScratchPad(), in, ctx.precomputeHashes(pubSeed), addr, ret)
 	return ret
 }
 
 // Compute the hash f used in WOTS+ and put it into out
-func (ctx *Context) fInto(pad scratchPad, in, pubSeed []byte,
+func (ctx *Context) fInto(pad scratchPad, in []byte, ph precomputedHashes,
 	addr address, out []byte) {
 	buf := pad.fBuf()
 	encodeUint64Into(HASH_PADDING_F, buf[:ctx.p.N])
 	addr.setKeyAndMask(0)
-	ctx.prfAddrInto(pad, addr, pubSeed, buf[ctx.p.N:ctx.p.N*2])
+	ph.prfAddrPubSeedInto(pad, addr, buf[ctx.p.N:ctx.p.N*2])
 	addr.setKeyAndMask(1)
-	ctx.prfAddrInto(pad, addr, pubSeed, buf[2*ctx.p.N:])
+	ph.prfAddrPubSeedInto(pad, addr, buf[2*ctx.p.N:])
 	xor.BytesSameLen(buf[2*ctx.p.N:], in, buf[2*ctx.p.N:])
 	ctx.hashInto(buf, out)
 }
@@ -107,22 +167,35 @@ func (ctx *Context) fInto(pad scratchPad, in, pubSeed []byte,
 // Compute RAND_HASH used to hash up various trees
 func (ctx *Context) h(left, right, pubSeed []byte, addr address) []byte {
 	ret := make([]byte, ctx.p.N)
-	ctx.hInto(ctx.newScratchPad(), left, right, pubSeed, addr, ret)
+	ctx.hInto(ctx.newScratchPad(), left, right, ctx.precomputeHashes(pubSeed),
+		addr, ret)
 	return ret
 }
 
 // Compute RAND_HASH used to hash up various trees and put it into out
-func (ctx *Context) hInto(pad scratchPad, left, right, pubSeed []byte,
-	addr address, out []byte) {
+func (ctx *Context) hInto(pad scratchPad, left, right []byte,
+	ph precomputedHashes, addr address, out []byte) {
 	buf := pad.hBuf()
 	encodeUint64Into(HASH_PADDING_H, buf[:ctx.p.N])
 	addr.setKeyAndMask(0)
-	ctx.prfAddrInto(pad, addr, pubSeed, buf[ctx.p.N:ctx.p.N*2])
+	ph.prfAddrPubSeedInto(pad, addr, buf[ctx.p.N:ctx.p.N*2])
 	addr.setKeyAndMask(1)
-	ctx.prfAddrInto(pad, addr, pubSeed, buf[2*ctx.p.N:3*ctx.p.N])
+	ph.prfAddrPubSeedInto(pad, addr, buf[2*ctx.p.N:3*ctx.p.N])
 	addr.setKeyAndMask(2)
-	ctx.prfAddrInto(pad, addr, pubSeed, buf[3*ctx.p.N:])
+	ph.prfAddrPubSeedInto(pad, addr, buf[3*ctx.p.N:])
 	xor.BytesSameLen(buf[2*ctx.p.N:3*ctx.p.N], left, buf[2*ctx.p.N:3*ctx.p.N])
 	xor.BytesSameLen(buf[3*ctx.p.N:], right, buf[3*ctx.p.N:])
 	ctx.hashInto(buf, out)
+}
+
+func (ctx *Context) newHashScratchPad() (pad hashScratchPad) {
+	if ctx.p.Func == SHA2 {
+		if ctx.p.N == 32 {
+			pad.h = sha256.New()
+		} else {
+			pad.h = sha512.New()
+		}
+		pad.hV = reflect.ValueOf(pad.h).Elem()
+	}
+	return
 }

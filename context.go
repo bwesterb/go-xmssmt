@@ -65,6 +65,7 @@ type PrivateKey struct {
 	// Number of signatures reserved from the container.
 	// See PrivateKeyContainer.Borrow()
 	borrowed uint32
+	ph       precomputedHashes
 }
 
 // XMSS[MT] public key
@@ -72,6 +73,7 @@ type PublicKey struct {
 	ctx     *Context // context which contains algorithm parameters
 	pubSeed []byte
 	root    []byte // root node
+	ph      precomputedHashes
 }
 
 // Represents a XMSS[MT] signature
@@ -189,6 +191,7 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 	sk := PrivateKey{
 		ctx:     ctx,
 		pubSeed: pubSeed,
+		ph:      ctx.precomputeHashes(pubSeed),
 		skSeed:  skSeed,
 		seqNo:   0,
 		skPrf:   skPrf,
@@ -205,6 +208,7 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 	pk := PublicKey{
 		ctx:     ctx,
 		pubSeed: pubSeed,
+		ph:      ctx.precomputeHashes(pubSeed),
 		root:    sk.root,
 	}
 
@@ -229,7 +233,7 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 		return
 	}
 
-	sk.ctx.genSubTreeInto(pad, sk.skSeed, sk.pubSeed, sta.address(), mtDeref)
+	sk.ctx.genSubTreeInto(pad, sk.skSeed, sk.ph, sta.address(), mtDeref)
 
 	// Generate WOTS+ signature --- at least, if we're not the root.
 	if sta.Layer == sk.ctx.p.D-1 {
@@ -278,7 +282,7 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 		pad,
 		mt.Root(),
 		sk.ctx.getWotsSeed(pad, sk.skSeed, otsAddr),
-		sk.pubSeed,
+		sk.ph,
 		otsAddr,
 		wotsSig)
 	return
@@ -355,7 +359,7 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 		pad,
 		mhash,
 		sk.ctx.getWotsSeed(pad, sk.skSeed, otsAddr),
-		sk.pubSeed,
+		sk.ph,
 		otsAddr,
 		sig.sigs[0].wotsSig)
 
@@ -641,6 +645,8 @@ func init() {
 type scratchPad struct {
 	buf []byte
 	n   uint32
+
+	hash hashScratchPad
 }
 
 func (pad scratchPad) fBuf() []byte {
@@ -655,12 +661,18 @@ func (pad scratchPad) prfBuf() []byte {
 	return pad.buf[7*pad.n : 9*pad.n+32]
 }
 
+func (pad scratchPad) prfAddrBuf() []byte {
+	return pad.buf[9*pad.n+32 : 9*pad.n+64]
+}
+
 func (ctx *Context) newScratchPad() scratchPad {
 	n := ctx.p.N
-	return scratchPad{
-		buf: make([]byte, 9*n+32),
-		n:   n,
+	pad := scratchPad{
+		buf:  make([]byte, 9*n+64),
+		n:    n,
+		hash: ctx.newHashScratchPad(),
 	}
+	return pad
 }
 
 type Logger interface {
