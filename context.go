@@ -351,7 +351,7 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 		wotsSig:  make([]byte, sk.ctx.wotsSigBytes),
 	}
 
-	mhash := sk.ctx.hashMessage(msg, sig.drv, sk.root, uint64(seqNo))
+	mhash := sk.ctx.hashMessage(pad, msg, sig.drv, sk.root, uint64(seqNo))
 	otsAddr := staPath[0].address()
 	otsAddr.setOTS(leafs[0])
 

@@ -14,7 +14,8 @@ func testHashMessage(ctx *Context, expect string, t *testing.T) {
 		R[i] = byte(2 * i)
 		root[i] = byte(i)
 	}
-	val := hex.EncodeToString(ctx.hashMessage(msg, R, root, idx))
+	val := hex.EncodeToString(ctx.hashMessage(ctx.newScratchPad(),
+		msg, R, root, idx))
 	if val != expect {
 		t.Errorf("%s hashMessage is %s instead of %s", ctx.Name(), val, expect)
 	}

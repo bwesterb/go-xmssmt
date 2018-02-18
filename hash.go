@@ -23,8 +23,9 @@ type precomputedHashes struct {
 }
 
 type hashScratchPad struct {
-	h  hash.Hash
-	hV reflect.Value
+	h     hash.Hash
+	hV    reflect.Value
+	shake sha3.ShakeHash
 }
 
 func (ctx *Context) precomputeHashes(pubSeed []byte) (ph precomputedHashes) {
@@ -56,27 +57,26 @@ func (ctx *Context) precomputeHashes(pubSeed []byte) (ph precomputedHashes) {
 			pad.hash.h.Sum(out[:0])
 		}
 	} else { // SHAKE
-		var h sha3.ShakeHash
-		if ctx.p.N == 32 {
-			h = sha3.NewShake128()
-		} else {
-			h = sha3.NewShake256()
-		}
-		h.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.p.N)))
-		h.Write(pubSeed)
+		// The rates of Shake128 and Shake256 are so high (136 resp. 168)
+		// that precomputing does not have merit.
 		ph.prfAddrPubSeedInto = func(pad scratchPad, addr address, out []byte) {
-			h2 := h.Clone()
+			h := pad.hash.shake
 			addrBuf := pad.prfAddrBuf()
+			h.Reset()
+			prefBuf := pad.prfBuf()[:ctx.p.N]
+			encodeUint64Into(HASH_PADDING_PRF, prefBuf)
 			addr.writeInto(addrBuf)
-			h2.Write(addrBuf)
-			h2.Read(out[:pad.n])
+			h.Write(prefBuf)
+			h.Write(pubSeed)
+			h.Write(addrBuf)
+			h.Read(out[:pad.n])
 		}
 	}
 	return
 }
 
 // Compute the hash of in.  out must be a n-byte slice.
-func (ctx *Context) hashInto(in, out []byte) {
+func (ctx *Context) hashInto(pad scratchPad, in, out []byte) {
 	if ctx.p.Func == SHA2 {
 		if ctx.p.N == 32 {
 			ret := sha256.Sum256(in)
@@ -86,11 +86,10 @@ func (ctx *Context) hashInto(in, out []byte) {
 			copy(out, ret[:])
 		}
 	} else { // SHAKE
-		if ctx.p.N == 32 {
-			sha3.ShakeSum128(out, in)
-		} else { // N == 64
-			sha3.ShakeSum256(out, in)
-		}
+		h := pad.hash.shake
+		h.Reset()
+		h.Write(in)
+		h.Read(out[:ctx.p.N])
 	}
 }
 
@@ -107,7 +106,7 @@ func (ctx *Context) prfUint64Into(pad scratchPad, i uint64, key, out []byte) {
 	encodeUint64Into(HASH_PADDING_PRF, buf[:ctx.p.N])
 	copy(buf[ctx.p.N:], key)
 	encodeUint64Into(i, buf[ctx.p.N*2:])
-	ctx.hashInto(buf, out)
+	ctx.hashInto(pad, buf, out)
 }
 
 // Compute PRF(key, addr)
@@ -123,25 +122,27 @@ func (ctx *Context) prfAddrInto(pad scratchPad, addr address, key, out []byte) {
 	encodeUint64Into(HASH_PADDING_PRF, buf[:ctx.p.N])
 	copy(buf[ctx.p.N:], key)
 	addr.writeInto(buf[ctx.p.N*2:])
-	ctx.hashInto(buf, out)
+	ctx.hashInto(pad, buf, out)
 }
 
 // Compute hash of a message and put it into out
-func (ctx *Context) hashMessage(msg, R, root []byte, idx uint64) []byte {
+func (ctx *Context) hashMessage(pad scratchPad, msg, R, root []byte,
+	idx uint64) []byte {
 	ret := make([]byte, ctx.p.N)
-	ctx.hashMessageInto(msg, R, root, idx, ret)
+	ctx.hashMessageInto(pad, msg, R, root, idx, ret)
 	return ret
 }
 
 // Compute hash of a message and put it into out
-func (ctx *Context) hashMessageInto(msg, R, root []byte, idx uint64, out []byte) {
+func (ctx *Context) hashMessageInto(pad scratchPad, msg, R, root []byte,
+	idx uint64, out []byte) {
 	buf := make([]byte, 4*int(ctx.p.N)+len(msg))
 	encodeUint64Into(HASH_PADDING_HASH, buf[:ctx.p.N])
 	copy(buf[ctx.p.N:], R)
 	copy(buf[ctx.p.N*2:], root)
 	encodeUint64Into(idx, buf[ctx.p.N*3:ctx.p.N*4])
 	copy(buf[ctx.p.N*4:], msg)
-	ctx.hashInto(buf, out)
+	ctx.hashInto(pad, buf, out)
 }
 
 // Compute the hash f used in WOTS+
@@ -161,7 +162,7 @@ func (ctx *Context) fInto(pad scratchPad, in []byte, ph precomputedHashes,
 	addr.setKeyAndMask(1)
 	ph.prfAddrPubSeedInto(pad, addr, buf[2*ctx.p.N:])
 	xor.BytesSameLen(buf[2*ctx.p.N:], in, buf[2*ctx.p.N:])
-	ctx.hashInto(buf, out)
+	ctx.hashInto(pad, buf, out)
 }
 
 // Compute RAND_HASH used to hash up various trees
@@ -185,7 +186,7 @@ func (ctx *Context) hInto(pad scratchPad, left, right []byte,
 	ph.prfAddrPubSeedInto(pad, addr, buf[3*ctx.p.N:])
 	xor.BytesSameLen(buf[2*ctx.p.N:3*ctx.p.N], left, buf[2*ctx.p.N:3*ctx.p.N])
 	xor.BytesSameLen(buf[3*ctx.p.N:], right, buf[3*ctx.p.N:])
-	ctx.hashInto(buf, out)
+	ctx.hashInto(pad, buf, out)
 }
 
 func (ctx *Context) newHashScratchPad() (pad hashScratchPad) {
@@ -196,6 +197,12 @@ func (ctx *Context) newHashScratchPad() (pad hashScratchPad) {
 			pad.h = sha512.New()
 		}
 		pad.hV = reflect.ValueOf(pad.h).Elem()
+	} else { // SHAKE
+		if ctx.p.N == 32 {
+			pad.shake = sha3.NewShake128()
+		} else {
+			pad.shake = sha3.NewShake256()
+		}
 	}
 	return
 }
