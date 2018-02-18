@@ -135,6 +135,30 @@ func TestMerkleTree(t *testing.T) {
 	}
 }
 
+func BenchmarkGenSubTreeSHA2_256(b *testing.B) {
+	benchmarkGenSubTree(NewContextFromOid(true, 0x8), b)
+}
+func BenchmarkGenSubTreeSHA2_512(b *testing.B) {
+	benchmarkGenSubTree(NewContextFromOid(true, 0x10), b)
+}
+func BenchmarkGenSubTreeSHAKE_256(b *testing.B) {
+	benchmarkGenSubTree(NewContextFromOid(true, 0x18), b)
+}
+func BenchmarkGenSubTreeSHAKE_512(b *testing.B) {
+	benchmarkGenSubTree(NewContextFromOid(true, 0x20), b)
+}
+
+func benchmarkGenSubTree(ctx *Context, b *testing.B) {
+	skSeed := make([]byte, ctx.p.N)
+	pubSeed := make([]byte, ctx.p.N)
+	pad := ctx.newScratchPad()
+	var addr address
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx.genSubTree(pad, skSeed, pubSeed, addr)
+	}
+}
+
 func BenchmarkGenLeafSHA2_256(b *testing.B) {
 	benchmarkGenLeaf(NewContextFromOid(false, 1), b)
 }
