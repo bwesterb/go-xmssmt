@@ -75,6 +75,29 @@ var registry []regEntry = []regEntry{
 	{"XMSS-SHAKE_20_512", false, 0x0000000c, Params{SHAKE, 64, 20, 1, 16}},
 }
 
+// Encodes parameters in the reserved Oid space as follows (big endian).
+//
+//    8-bit magic         should be 0xEA
+//    1-bit version       should be 0
+//    4-bit compr-n       contains (n/8)-1 for the parameter n
+//    2-bit hash          the hash function
+//    2-bit w             0 for WotsW=
+//    6-bit full-height   the full height parameter
+//    6-bit d             the parameter d
+//
+//  We assume XMSS if d == 1 and XMSSMT otherwise.
+// func (params *Params) MarshalBinary() ([]byte, error) {
+//     ret uint32
+//     if params.N % 8 != 0 { return nil, errorf("N is not divisable by 8") }
+//     if params.N > 128 { return nil, errorf("N is too large") }
+//     if params.Func > 1 { return nil, errorf("Func is too large") }
+//     ret |= 0xea << 24 // magic
+//     ret |= ((params.N / 8) - 1) << 19
+//     ret |= uint32(params.Func) << 2
+//     ret |= params.WotsLogW()
+//
+// }
+
 // Returns the size of the subtrees for this parameter.
 func (params *Params) BareSubTreeSize() int {
 	height := (params.FullHeight / params.D) + 1
