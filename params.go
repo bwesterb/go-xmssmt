@@ -88,22 +88,32 @@ var registry []regEntry = []regEntry{
 //
 //  We assume XMSS if d == 1 and XMSSMT otherwise.
 func (params *Params) MarshalBinary() ([]byte, error) {
+	ret := make([]byte, 4)
+	err := params.WriteInto(ret)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+// Write parameters into buf as encoded by MarshalBinary().
+func (params *Params) WriteInto(buf []byte) error {
 	var val uint32
 	var wCode uint32
 	if params.N%8 != 0 {
-		return nil, errorf("N is not divisable by 8")
+		return errorf("N is not divisable by 8")
 	}
 	if params.N > 128 {
-		return nil, errorf("N is too large")
+		return errorf("N is too large")
 	}
 	if params.Func > 1 {
-		return nil, errorf("Func is too large")
+		return errorf("Func is too large")
 	}
 	if params.FullHeight > 63 {
-		return nil, errorf("FullHeight is too large")
+		return errorf("FullHeight is too large")
 	}
 	if params.D > 63 {
-		return nil, errorf("D is too large")
+		return errorf("D is too large")
 	}
 	switch params.WotsW {
 	case 4:
@@ -113,7 +123,7 @@ func (params *Params) MarshalBinary() ([]byte, error) {
 	case 256:
 		wCode = 2
 	default:
-		return nil, errorf("Only WotsW=4,16,256 are supported")
+		return errorf("Only WotsW=4,16,256 are supported")
 	}
 	val |= 0xea << 24 // magic
 	val |= ((params.N / 8) - 1) << 16
@@ -121,9 +131,8 @@ func (params *Params) MarshalBinary() ([]byte, error) {
 	val |= wCode << 12
 	val |= params.FullHeight << 6
 	val |= params.D
-	ret := make([]byte, 4)
-	binary.BigEndian.PutUint32(ret, val)
-	return ret, nil
+	binary.BigEndian.PutUint32(buf, val)
+	return nil
 }
 
 // Decodes parameters as encoded by MarshalBinary().
