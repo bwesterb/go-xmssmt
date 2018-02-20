@@ -2,6 +2,7 @@ package xmssmt
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"fmt"
 	"reflect"
 )
@@ -106,6 +107,64 @@ type errorImpl struct {
 	msg    string
 	locked bool
 	inner  error
+}
+
+// Check whether the sig is a valid signature of this public key
+// for the given message.
+func (pk *PublicKey) Verify(sig *Signature, msg []byte) (bool, Error) {
+	pad := pk.ctx.newScratchPad()
+	ph := pk.ctx.precomputeHashes(pk.pubSeed, nil)
+	rxMsg := pk.ctx.hashMessage(pad, msg, sig.drv, pk.root, uint64(sig.seqNo))
+	staPath, leafs := pk.ctx.subTreePathForSeqNo(sig.seqNo)
+
+	var layer uint32
+	for layer = 0; layer < pk.ctx.p.D; layer++ {
+		var lTreeAddr, otsAddr, nodeAddr address
+		rxAddr := staPath[layer].address()
+		otsAddr.setSubTreeFrom(rxAddr)
+		otsAddr.setType(ADDR_TYPE_OTS)
+		lTreeAddr.setSubTreeFrom(rxAddr)
+		lTreeAddr.setType(ADDR_TYPE_LTREE)
+		nodeAddr.setSubTreeFrom(rxAddr)
+		nodeAddr.setType(ADDR_TYPE_HASHTREE)
+
+		rxSig := sig.sigs[layer]
+		var offset uint32 = leafs[layer]
+		otsAddr.setOTS(offset)
+		lTreeAddr.setLTree(offset)
+		wotsPk := pk.ctx.wotsPkFromSig(pad, rxSig.wotsSig, rxMsg, ph, otsAddr)
+		curHash := pk.ctx.lTree(pad, wotsPk, ph, lTreeAddr)
+
+		// use the authentication path to hash up the merkle tree
+		var height uint32
+		for height = 1; height <= pk.ctx.treeHeight; height++ {
+			var left, right []byte
+			nodeAddr.setTreeHeight(height - 1)
+			nodeAddr.setTreeIndex(offset >> 1)
+			sibling := rxSig.authPath[(height-1)*pk.ctx.p.N : height*pk.ctx.p.N]
+
+			if offset&1 == 0 {
+				// we're on the left, so the sibling hash from the
+				// auth path is on the right
+				left = curHash
+				right = sibling
+			} else {
+				left = sibling
+				right = curHash
+			}
+
+			pk.ctx.hInto(pad, left, right, ph, nodeAddr, curHash)
+			offset >>= 1
+		}
+
+		rxMsg = curHash
+	}
+
+	if subtle.ConstantTimeCompare(rxMsg, pk.root) != 1 {
+		return false, errorf("Invalid signature")
+	}
+
+	return true, nil
 }
 
 // Returns representation of signature as accepted by the reference
@@ -518,6 +577,11 @@ func (params *Params) WotsLen() uint32 {
 // Returns the size of a WOTS+ signature
 func (params *Params) WotsSignatureSize() uint32 {
 	return params.WotsLen() * params.N
+}
+
+// Returns the maximum signature sequence number
+func (params *Params) MaxSignatureSeqNo() uint64 {
+	return (1 << params.FullHeight) - 1
 }
 
 // Returns the name of the XMSSMT instance and an empty string if it has

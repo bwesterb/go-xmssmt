@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"testing"
 )
@@ -14,7 +15,7 @@ import (
 //    pk: ac655131aacd5dd041b093c7dcadd70269f8cdd6afddd4dbc52d1628f5087cb45335890d5d174a65c2bb19eb301ae9c3201842c4d710a3f820fc735860646a51
 //    sk: 0000000000000000b9fcdb4826ceef80b10245650bdea01b5672f5695249b04a95abf2d33363d465f01cfb56df61b7e0a2f3d7fd6bc2b4f8426404f610192f06cce1b37ac9033d515335890d5d174a65c2bb19eb301ae9c3201842c4d710a3f820fc735860646a51ac655131aacd5dd041b093c7dcadd70269f8cdd6afddd4dbc52d1628f5087cb4
 
-func TestDeriveAndSign(t *testing.T) {
+func TestDeriveSignVerify(t *testing.T) {
 	SetLogger(t)
 
 	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
@@ -23,6 +24,7 @@ func TestDeriveAndSign(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
+	msg := []byte("test message")
 	ctx := NewContextFromName("XMSSMT-SHA2_60/12_256")
 	pubSeed := []byte{83, 53, 137, 13, 93, 23, 74, 101, 194, 187, 25, 235,
 		48, 26, 233, 195, 32, 24, 66, 196, 215, 16, 163, 248, 32, 252, 115,
@@ -33,7 +35,7 @@ func TestDeriveAndSign(t *testing.T) {
 	skPrf := []byte{240, 28, 251, 86, 223, 97, 183, 224, 162, 243, 215, 253,
 		107, 194, 180, 248, 66, 100, 4, 246, 16, 25, 47, 6, 204, 225, 179,
 		122, 201, 3, 61, 81}
-	sk, _, err := ctx.Derive(dir+"/key", pubSeed, skSeed, skPrf)
+	sk, pk, err := ctx.Derive(dir+"/key", pubSeed, skSeed, skPrf)
 	if err != nil {
 		t.Fatalf("Derive(): %v", err)
 	}
@@ -43,7 +45,7 @@ func TestDeriveAndSign(t *testing.T) {
 		sk.root) {
 		t.Fatalf("Derive(): generated incorrect root")
 	}
-	sig, err := sk.Sign([]byte("test message"))
+	sig, err := sk.Sign(msg)
 	if err != nil {
 		t.Fatalf("Sign(): %v", err)
 	}
@@ -51,5 +53,66 @@ func TestDeriveAndSign(t *testing.T) {
 	valHash := sha256.Sum256(sigBytes)
 	if hex.EncodeToString(valHash[:]) != "43d9769c0e51000137db4cb4c62cafd43b09dfec7f96a70636c959f020f28541" {
 		t.Fatalf("Wrong signature")
+	}
+
+	sigOk, err := pk.Verify(sig, msg)
+	if !sigOk {
+		t.Fatalf("Verifying signature failed: %v", err)
+	}
+
+	sigOk, _ = pk.Verify(sig, []byte("wrong message"))
+	if sigOk {
+		t.Fatalf("Verifying signature did not fail")
+	}
+
+	sk.seqNo = 0x26ba0043f46012f
+	sig, err = sk.Sign(msg)
+	if err != nil {
+		t.Fatalf("Sign(): %v", err)
+	}
+	sigBytes, _ = sig.MarshalBinary()
+	valHash = sha256.Sum256(sigBytes)
+	if hex.EncodeToString(valHash[:]) != "3477655201e7ec8d233e0169798cc00e294b19ff0419bf7a4ee28c526f2da6e5" {
+		t.Fatalf("Wrong signature")
+	}
+
+	sigOk, err = pk.Verify(sig, msg)
+	if !sigOk {
+		t.Fatalf("Verifying signature failed: %v", err)
+	}
+
+	sigOk, _ = pk.Verify(sig, []byte("wrong message"))
+	if sigOk {
+		t.Fatalf("Verifying signature did not fail")
+	}
+}
+
+func TestGenerateSignVerify(t *testing.T) {
+	SetLogger(t)
+
+	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
+	if err != nil {
+		t.Fatalf("TempDir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	msg := []byte("test message")
+	ctx := NewContextFromName("XMSSMT-SHA2_60/12_256")
+	sk, pk, err := ctx.GenerateKeyPair(dir + "/key")
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(): %v", err)
+	}
+	sk.seqNo = SignatureSeqNo(rand.Int63n(int64(ctx.p.MaxSignatureSeqNo())))
+	sig, err := sk.Sign(msg)
+	if err != nil {
+		t.Fatalf("Sign(): %v", err)
+	}
+	sigOk, err := pk.Verify(sig, msg)
+	if !sigOk {
+		t.Fatalf("Verifying signature failed: %v", err)
+	}
+	sigOk, _ = pk.Verify(sig, []byte("wrong message"))
+	if sigOk {
+		t.Fatalf("Verifying signature did not fail")
 	}
 }
