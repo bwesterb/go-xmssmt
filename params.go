@@ -125,7 +125,16 @@ func ListNames() (names []string) {
 
 // Returns the 2log of the Winternitz parameter
 func (params *Params) WotsLogW() uint8 {
-	return 4
+	switch params.WotsW {
+	case 4:
+		return 2
+	case 16:
+		return 4
+	case 256:
+		return 8
+	default:
+		panic("Only WotsW=4,16,256 are supported")
+	}
 }
 
 // Returns the number of  main WOTS+ chains
@@ -135,7 +144,16 @@ func (params *Params) WotsLen1() uint32 {
 
 // Returns the number of WOTS+ checksum chains
 func (params *Params) WotsLen2() uint32 {
-	return 3
+	switch params.WotsW {
+	case 4:
+		return 2
+	case 16:
+		return 3
+	case 256:
+		return 5
+	default:
+		panic("Only WotsW=4,16,256 are supported")
+	}
 }
 
 // Returns the total number of WOTS+ chains

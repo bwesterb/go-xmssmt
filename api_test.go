@@ -96,13 +96,20 @@ func TestGenerateSignVerify(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	msg := []byte("test message")
 	ctx := NewContextFromName("XMSSMT-SHA2_60/12_256")
 	sk, pk, err := ctx.GenerateKeyPair(dir + "/key")
 	if err != nil {
 		t.Fatalf("GenerateKeyPair(): %v", err)
 	}
-	sk.seqNo = SignatureSeqNo(rand.Int63n(int64(ctx.p.MaxSignatureSeqNo())))
+
+	testSignThenVerify(sk, pk, t)
+}
+
+func testSignThenVerify(sk *PrivateKey, pk *PublicKey, t *testing.T) {
+	msg := []byte("test message")
+	params := sk.Context().Params()
+	sk.seqNo = SignatureSeqNo(rand.Int63n(
+		int64(params.MaxSignatureSeqNo())))
 	sig, err := sk.Sign(msg)
 	if err != nil {
 		t.Fatalf("Sign(): %v", err)
@@ -115,4 +122,31 @@ func TestGenerateSignVerify(t *testing.T) {
 	if sigOk {
 		t.Fatalf("Verifying signature did not fail")
 	}
+}
+
+func testGenerateSignVerify(params Params, t *testing.T) {
+	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
+	if err != nil {
+		t.Fatalf("TempDir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	ctx, err := NewContext(params)
+	if err != nil {
+		t.Fatalf("NewContext(): %v", err)
+	}
+	sk, pk, err := ctx.GenerateKeyPair(dir + "/key")
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(): %v", err)
+	}
+	testSignThenVerify(sk, pk, t)
+}
+
+func TestWotsW4(t *testing.T) {
+	SetLogger(t)
+	testGenerateSignVerify(Params{SHAKE, 32, 10, 5, 4}, t)
+}
+func TestWotsW256(t *testing.T) {
+	SetLogger(t)
+	testGenerateSignVerify(Params{SHAKE, 32, 10, 5, 4}, t)
 }

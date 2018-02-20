@@ -355,14 +355,18 @@ func NewContext(params Params) (ctx *Context, err error) {
 	ctx.p = params
 	ctx.mt = (ctx.p.D > 1)
 
+	if ctx.p.N != 32 && ctx.p.N != 64 {
+		return nil, fmt.Errorf("Only N=32,64 are supported")
+	}
+
 	if params.FullHeight%params.D != 0 {
 		return nil, fmt.Errorf("D does not divide FullHeight")
 	}
 
 	ctx.treeHeight = params.FullHeight / params.D
 
-	if params.WotsW != 16 {
-		return nil, fmt.Errorf("Only WotsW=16 is supported at the moment")
+	if params.WotsW != 4 && params.WotsW != 16 && params.WotsW != 256 {
+		return nil, fmt.Errorf("Only WotsW=4,16,256 is supported")
 	}
 
 	if ctx.mt {
@@ -382,4 +386,16 @@ func NewContext(params Params) (ctx *Context, err error) {
 	ctx.skBytes = ctx.indexBytes + 4*params.N
 
 	return
+}
+
+func (sk *PrivateKey) Context() *Context {
+	return sk.ctx
+}
+
+func (pk *PublicKey) Context() *Context {
+	return pk.ctx
+}
+
+func (sig *Signature) Context() *Context {
+	return sig.ctx
 }

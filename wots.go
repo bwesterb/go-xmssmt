@@ -43,6 +43,11 @@ func (ctx *Context) wotsChainLengths(msg []byte) []uint8 {
 // Converts the given array of bytes into base w for the WOTS+ one-time
 // signature scheme.  Only works if LogW divides into 8.
 func (ctx *Context) toBaseW(input []byte, output []uint8) {
+	if ctx.p.WotsW == 256 {
+		copy(output, input)
+		return
+	}
+
 	var in uint32 = 0
 	var out uint32 = 0
 	var total uint8
