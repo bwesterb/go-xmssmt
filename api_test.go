@@ -50,7 +50,7 @@ func TestDeriveSignVerify(t *testing.T) {
 		t.Fatalf("Sign(): %v", err)
 	}
 	sigBytes, _ := sig.MarshalBinary()
-	valHash := sha256.Sum256(sigBytes)
+	valHash := sha256.Sum256(sigBytes[4:])
 	if hex.EncodeToString(valHash[:]) != "43d9769c0e51000137db4cb4c62cafd43b09dfec7f96a70636c959f020f28541" {
 		t.Fatalf("Wrong signature")
 	}
@@ -70,8 +70,12 @@ func TestDeriveSignVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sign(): %v", err)
 	}
-	sigBytes, _ = sig.MarshalBinary()
-	valHash = sha256.Sum256(sigBytes)
+	sigBytes, err = sig.MarshalBinary()
+	if err != nil {
+		t.Fatalf("Failed to MarshalBinary() signature")
+	}
+
+	valHash = sha256.Sum256(sigBytes[4:])
 	if hex.EncodeToString(valHash[:]) != "3477655201e7ec8d233e0169798cc00e294b19ff0419bf7a4ee28c526f2da6e5" {
 		t.Fatalf("Wrong signature")
 	}
@@ -84,6 +88,17 @@ func TestDeriveSignVerify(t *testing.T) {
 	sigOk, _ = pk.Verify(sig, []byte("wrong message"))
 	if sigOk {
 		t.Fatalf("Verifying signature did not fail")
+	}
+
+	sig2 := new(Signature)
+	err = sig2.UnmarshalBinary(sigBytes)
+	if err != nil {
+		t.Fatalf("Failed to UnmarshalBinary signature")
+	}
+
+	sigOk, err = pk.Verify(sig2, msg)
+	if !sigOk {
+		t.Fatalf("Verifying unmarshaled signature failed: %v", err)
 	}
 }
 

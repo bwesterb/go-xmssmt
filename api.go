@@ -148,20 +148,60 @@ func (pk *PublicKey) Verify(sig *Signature, msg []byte) (bool, Error) {
 	return true, nil
 }
 
-// Returns representation of signature as accepted by the reference
-// implementation (without the message).
-// Will never return an error.
+// Returns representation of signature with parameters compressed into
+// the reserved space of the Oid prefix.  See Params.MarshalBinary().
 func (sig *Signature) MarshalBinary() ([]byte, error) {
-	ret := make([]byte, sig.ctx.sigBytes)
-	encodeUint64Into(uint64(sig.seqNo), ret[:sig.ctx.indexBytes])
-	copy(ret[sig.ctx.indexBytes:], sig.drv)
-	stOff := sig.ctx.indexBytes + sig.ctx.p.N
-	stLen := sig.ctx.wotsSigBytes + sig.ctx.p.N*sig.ctx.treeHeight
-	for i, stSig := range sig.sigs {
-		copy(ret[stOff+uint32(i)*stLen:], stSig.wotsSig)
-		copy(ret[stOff+uint32(i)*stLen+sig.ctx.wotsSigBytes:], stSig.authPath)
+	ret := make([]byte, 4+sig.ctx.sigBytes)
+	err := sig.WriteInto(ret)
+	if err != nil {
+		return nil, err
 	}
 	return ret, nil
+}
+
+func (sig *Signature) UnmarshalBinary(buf []byte) error {
+	var params Params
+	err := params.UnmarshalBinary(buf[:4])
+	if err != nil {
+		return err
+	}
+	sig.ctx, err = NewContext(params)
+	if err != nil {
+		return err
+	}
+	sig.seqNo = SignatureSeqNo(decodeUint64(buf[4 : 4+sig.ctx.indexBytes]))
+	sig.drv = make([]byte, params.N)
+	sig.sigs = make([]subTreeSig, params.D)
+	copy(sig.drv, buf[4+sig.ctx.indexBytes:4+sig.ctx.indexBytes+params.N])
+	stOff := 4 + sig.ctx.indexBytes + params.N
+	stLen := sig.ctx.wotsSigBytes + params.N*sig.ctx.treeHeight
+	var i uint32
+	for i = 0; i < params.D; i++ {
+		stSig := &sig.sigs[i]
+		stSig.wotsSig = make([]byte, sig.ctx.wotsSigBytes)
+		stSig.authPath = make([]byte, params.N*params.D)
+		copy(stSig.wotsSig, buf[stOff+i*stLen:stOff+i*stLen+sig.ctx.wotsSigBytes])
+		copy(stSig.authPath, buf[stOff+i*stLen+sig.ctx.wotsSigBytes:stOff+(i+1)*stLen])
+	}
+	return nil
+}
+
+// Writes signature to buf in the same way as returned
+// by Signature.MarshalBinary().
+func (sig *Signature) WriteInto(buf []byte) error {
+	err := sig.ctx.p.WriteInto(buf)
+	if err != nil {
+		return err
+	}
+	encodeUint64Into(uint64(sig.seqNo), buf[4:4+sig.ctx.indexBytes])
+	copy(buf[4+sig.ctx.indexBytes:], sig.drv)
+	stOff := 4 + sig.ctx.indexBytes + sig.ctx.p.N
+	stLen := sig.ctx.wotsSigBytes + sig.ctx.p.N*sig.ctx.treeHeight
+	for i, stSig := range sig.sigs {
+		copy(buf[stOff+uint32(i)*stLen:], stSig.wotsSig)
+		copy(buf[stOff+uint32(i)*stLen+sig.ctx.wotsSigBytes:], stSig.authPath)
+	}
+	return nil
 }
 
 // Generates an XMSS[MT] public/private keypair from the given seeds
