@@ -18,20 +18,21 @@ type Context struct {
 	// Will guess an appropriate number if set to 0.
 	Threads int
 
-	p            Params  // parameters.
-	mt           bool    // true for XMSSMT; false for XMSS
-	oid          uint32  // OID of this configuration, if it has any
-	wotsLogW     uint8   // logarithm of the Winternitz parameter
-	wotsLen1     uint32  // WOTS+ chains for message
-	wotsLen2     uint32  // WOTS+ chains for checksum
-	wotsLen      uint32  // total number of WOTS+ chains
-	wotsSigBytes uint32  // length of WOTS+ signature
-	treeHeight   uint32  // height of a subtree
-	indexBytes   uint32  // size of an index
-	sigBytes     uint32  // size of signature
-	pkBytes      uint32  // size of public key
-	skBytes      uint32  // size of secret key
-	name         *string // name of algorithm
+	p            Params // parameters.
+	wotsLogW     uint8  // logarithm of the Winternitz parameter
+	wotsLen1     uint32 // WOTS+ chains for message
+	wotsLen2     uint32 // WOTS+ chains for checksum
+	wotsLen      uint32 // total number of WOTS+ chains
+	wotsSigBytes uint32 // length of WOTS+ signature
+	treeHeight   uint32 // height of a subtree
+	indexBytes   uint32 // size of an index
+	sigBytes     uint32 // size of signature
+	pkBytes      uint32 // size of public key
+	skBytes      uint32 // size of secret key
+
+	mt   bool    // true for XMSSMT; false for XMSS
+	oid  uint32  // OID of this configuration, if it has any
+	name *string // name of algorithm
 }
 
 // Sequence number of signatures.

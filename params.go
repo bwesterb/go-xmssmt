@@ -153,18 +153,35 @@ func (params *Params) MaxSignatureSeqNo() uint64 {
 	return (1 << params.FullHeight) - 1
 }
 
+// Returns the name and OID of this set of parameters, it is has them.
+func (params *Params) LookupNameAndOid() (string, uint32) {
+	for _, entry := range registry {
+		if reflect.DeepEqual(entry.params, params) {
+			return entry.name, 0
+		}
+	}
+	return "", 0
+}
+
+// Looks up the name and oid of this set of parameters and returns whether
+// any were found.
+func (ctx *Context) ensureNameAndOidAreSet() bool {
+	if ctx.name != nil {
+		return true
+	}
+	var name2 string
+	name2, ctx.oid = ctx.p.LookupNameAndOid()
+	if name2 != "" {
+		ctx.name = &name2
+		return true
+	}
+	return false
+}
+
 // Returns the name of the XMSSMT instance and an empty string if it has
 // no name.
 func (ctx *Context) Name() string {
-	if ctx.name == nil {
-		for _, entry := range registry {
-			if reflect.DeepEqual(entry.params, ctx.p) {
-				name2 := entry.name
-				ctx.name = &name2
-			}
-		}
-	}
-	if ctx.name != nil {
+	if ctx.ensureNameAndOidAreSet() {
 		return *ctx.name
 	}
 	return ""
@@ -172,6 +189,7 @@ func (ctx *Context) Name() string {
 
 // Returns the Oid of the XMSSMT instance and 0 if it has no Oid.
 func (ctx *Context) Oid() uint32 {
+	ctx.ensureNameAndOidAreSet()
 	return ctx.oid
 }
 
