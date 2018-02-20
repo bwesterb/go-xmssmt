@@ -10,7 +10,24 @@ const (
 	ADDR_TYPE_HASHTREE = 2
 )
 
+// Address used in XMSS[MT] to diversify the hashes.  See eg prfAddrInto().
 type address [8]uint32
+
+// Represents the position of a subtree in the full XMSSMT tree.
+type SubTreeAddress struct {
+	// The height of the subtree.  The leaf-subtrees have layer=0
+	Layer uint32
+
+	// The offset in the subtree.  The leftmost subtrees have tree=0
+	Tree uint64
+}
+
+// Converts to address
+func (sta *SubTreeAddress) address() (addr address) {
+	addr.setLayer(sta.Layer)
+	addr.setTree(sta.Tree)
+	return
+}
 
 func (addr *address) setLayer(layer uint32) {
 	addr[0] = layer

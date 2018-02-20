@@ -1,5 +1,7 @@
 package xmssmt
 
+// The core of XMSS and XMSSMT.
+
 import (
 	"runtime"
 	"sync"
@@ -20,6 +22,14 @@ type merkleTree struct {
 	height uint32
 	n      uint32
 	buf    []byte
+}
+
+// A scratchpad used by a single goroutine to avoid memory allocation.
+type scratchPad struct {
+	buf []byte
+	n   uint32
+
+	hash hashScratchPad
 }
 
 // Allocates memory for a merkle tree of n-byte strings of the given height.
@@ -227,4 +237,130 @@ func (ctx *Context) subTreePathForSeqNo(seqNo SignatureSeqNo) (
 			((1 << ctx.treeHeight) - 1))
 	}
 	return
+}
+
+// Returns the given subtree, either by loading it from the cache,
+// or generating it.
+func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
+	mt *merkleTree, wotsSig []byte, err Error) {
+	buf, exists, err := sk.ctr.GetSubTree(sta)
+	if err != nil {
+		return
+	}
+
+	treeBuf := buf[:sk.ctx.p.BareSubTreeSize()]
+	mtDeref := merkleTreeFromBuf(treeBuf, sk.ctx.treeHeight+1, sk.ctx.p.N)
+	mt = &mtDeref
+	wotsSig = buf[sk.ctx.p.BareSubTreeSize():]
+
+	if exists {
+		return
+	}
+
+	sk.ctx.genSubTreeInto(pad, sk.skSeed, sk.ph, sta.address(), mtDeref)
+
+	// Generate WOTS+ signature --- at least, if we're not the root.
+	if sta.Layer == sk.ctx.p.D-1 {
+		return
+	}
+
+	// Compute address of parent
+	parentSta := SubTreeAddress{
+		Layer: sta.Layer + 1,
+		Tree:  sta.Tree >> sk.ctx.treeHeight,
+	}
+
+	// If the parent is not cached, we'll need to cache it.  To this end
+	// we will cache all ancestors.
+	// It is strictly speaking unnecessary to generate the ancestors to
+	// sign the root of this tree: we will do it anyway, for otherwise
+	// we cannot generate the authentication path, which we'll need
+	// anyway later on.
+	if !sk.ctr.HasSubTree(parentSta) {
+		for layer := sk.ctx.p.D; layer > sta.Layer; layer-- {
+			ancSta := SubTreeAddress{
+				Layer: layer,
+				Tree:  sta.Tree >> (sk.ctx.treeHeight * (layer - sta.Layer)),
+			}
+			if !sk.ctr.HasSubTree(ancSta) {
+				_, _, err = sk.getSubTree(pad, ancSta)
+
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+		}
+	}
+
+	// Get the parent sub tree
+	_, _, err = sk.getSubTree(pad, parentSta)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Sign our root
+	otsAddr := parentSta.address()
+	leafIdx := uint32(sta.Tree & ((1 << sk.ctx.treeHeight) - 1))
+	otsAddr.setOTS(leafIdx)
+	sk.ctx.wotsSignInto(
+		pad,
+		mt.Root(),
+		sk.ph,
+		otsAddr,
+		wotsSig)
+	return
+}
+
+// Gets the next free sequence number
+func (sk *PrivateKey) getSeqNo() (SignatureSeqNo, Error) {
+	if sk.borrowed > 0 {
+		// If we have some borrowed sequence numbers, we can simply use one
+		// of them.
+		sk.borrowed -= 1
+		sk.seqNo += 1
+		return sk.seqNo - 1, nil
+	}
+
+	// If we didn't borrow sequence numbers, then we have to increment
+	// the sequence number in the container before we continue.
+	err := sk.ctr.SetSeqNo(sk.seqNo + 1)
+	if err != nil {
+		return 0, err
+	}
+	sk.seqNo += 1
+	return sk.seqNo - 1, nil
+}
+
+func (pad scratchPad) fBuf() []byte {
+	return pad.buf[:3*pad.n]
+}
+
+func (pad scratchPad) hBuf() []byte {
+	return pad.buf[3*pad.n : 7*pad.n]
+}
+
+func (pad scratchPad) prfBuf() []byte {
+	return pad.buf[7*pad.n : 9*pad.n+32]
+}
+
+func (pad scratchPad) prfAddrBuf() []byte {
+	return pad.buf[9*pad.n+32 : 9*pad.n+64]
+}
+
+func (pad scratchPad) wotsSkSeedBuf() []byte {
+	return pad.buf[9*pad.n+64 : 10*pad.n+64]
+}
+
+func (pad scratchPad) wotsBuf() []byte {
+	return pad.buf[10*pad.n+64:]
+}
+
+func (ctx *Context) newScratchPad() scratchPad {
+	n := ctx.p.N
+	pad := scratchPad{
+		buf:  make([]byte, 10*n+64+ctx.p.N*ctx.wotsLen),
+		n:    n,
+		hash: ctx.newHashScratchPad(),
+	}
+	return pad
 }

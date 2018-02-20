@@ -80,22 +80,6 @@ type PrivateKeyContainer interface {
 	Close() Error
 }
 
-// Represents the position of a subtree in the full XMSSMT tree.
-type SubTreeAddress struct {
-	// The height of the subtree.  The leaf-subtrees have layer=0
-	Layer uint32
-
-	// The offset in the subtree.  The leftmost subtrees have tree=0
-	Tree uint64
-}
-
-// Converts to address
-func (sta *SubTreeAddress) address() (addr address) {
-	addr.setLayer(sta.Layer)
-	addr.setTree(sta.Tree)
-	return
-}
-
 // PrivateKeyContainer backed by three files:
 //
 //   path/to/key        contains the secret key and signature sequence number

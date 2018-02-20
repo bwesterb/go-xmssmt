@@ -1,5 +1,7 @@
 package xmssmt
 
+// The various hashes  used by WOTS+, XMSS and XMSSMT.
+
 import (
 	"crypto/sha256"
 	"crypto/sha512"

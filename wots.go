@@ -1,5 +1,7 @@
 package xmssmt
 
+// The Winternitz One-Time Signature scheme as used by XMSS[MT].
+
 // Generate WOTS+ secret key
 func (ctx *Context) genWotsSk(pad scratchPad, ph precomputedHashes,
 	addr address, out []byte) {
