@@ -1,6 +1,7 @@
 package xmssmt
 
 import (
+	"encoding/binary"
 	"reflect"
 )
 
@@ -78,25 +79,85 @@ var registry []regEntry = []regEntry{
 // Encodes parameters in the reserved Oid space as follows (big endian).
 //
 //    8-bit magic         should be 0xEA
-//    1-bit version       should be 0
+//    4-bit version       should be 0
 //    4-bit compr-n       contains (n/8)-1 for the parameter n
 //    2-bit hash          the hash function
-//    2-bit w             0 for WotsW=
+//    2-bit w             0 for WotsW=4, 1 for WotsW=16, 2 for WotsW=256
 //    6-bit full-height   the full height parameter
 //    6-bit d             the parameter d
 //
 //  We assume XMSS if d == 1 and XMSSMT otherwise.
-// func (params *Params) MarshalBinary() ([]byte, error) {
-//     ret uint32
-//     if params.N % 8 != 0 { return nil, errorf("N is not divisable by 8") }
-//     if params.N > 128 { return nil, errorf("N is too large") }
-//     if params.Func > 1 { return nil, errorf("Func is too large") }
-//     ret |= 0xea << 24 // magic
-//     ret |= ((params.N / 8) - 1) << 19
-//     ret |= uint32(params.Func) << 2
-//     ret |= params.WotsLogW()
-//
-// }
+func (params *Params) MarshalBinary() ([]byte, error) {
+	var val uint32
+	var wCode uint32
+	if params.N%8 != 0 {
+		return nil, errorf("N is not divisable by 8")
+	}
+	if params.N > 128 {
+		return nil, errorf("N is too large")
+	}
+	if params.Func > 1 {
+		return nil, errorf("Func is too large")
+	}
+	if params.FullHeight > 63 {
+		return nil, errorf("FullHeight is too large")
+	}
+	if params.D > 63 {
+		return nil, errorf("D is too large")
+	}
+	switch params.WotsW {
+	case 4:
+		wCode = 0
+	case 16:
+		wCode = 1
+	case 256:
+		wCode = 2
+	default:
+		return nil, errorf("Only WotsW=4,16,256 are supported")
+	}
+	val |= 0xea << 24 // magic
+	val |= ((params.N / 8) - 1) << 16
+	val |= uint32(params.Func) << 14
+	val |= wCode << 12
+	val |= params.FullHeight << 6
+	val |= params.D
+	ret := make([]byte, 4)
+	binary.BigEndian.PutUint32(ret, val)
+	return ret, nil
+}
+
+// Decodes parameters as encoded by MarshalBinary().
+func (params *Params) UnmarshalBinary(buf []byte) error {
+	if len(buf) != 4 {
+		return errorf("Must be 4 bytes long (instead of %d)", len(buf))
+	}
+	val := binary.BigEndian.Uint32(buf)
+	magic := val >> 24
+	if magic != 0xea {
+		return errorf("These are not compressed parameters (magic is wrong).")
+	}
+	version := (val >> 20) & ((1 << 4) - 1)
+	if version != 0 {
+		return errorf("Unsupported compressed parameters version")
+	}
+	comprN := (val >> 16) & ((1 << 4) - 1)
+	wCode := (val >> 12) & ((1 << 2) - 1)
+	switch wCode {
+	case 0:
+		params.WotsW = 4
+	case 1:
+		params.WotsW = 16
+	case 2:
+		params.WotsW = 256
+	default:
+		return errorf("Unsupported W-code in compressed parameters")
+	}
+	params.N = (comprN + 1) * 8
+	params.Func = HashFunc((val >> 14) & ((1 << 2) - 1))
+	params.FullHeight = (val >> 6) & ((1 << 6) - 1)
+	params.D = val & ((1 << 6) - 1)
+	return nil
+}
 
 // Returns the size of the subtrees for this parameter.
 func (params *Params) BareSubTreeSize() int {
