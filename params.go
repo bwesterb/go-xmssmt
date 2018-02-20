@@ -197,8 +197,8 @@ func (params *Params) MaxSignatureSeqNo() uint64 {
 // Returns the name and OID of this set of parameters, it is has them.
 func (params *Params) LookupNameAndOid() (string, uint32) {
 	for _, entry := range registry {
-		if reflect.DeepEqual(entry.params, params) {
-			return entry.name, 0
+		if reflect.DeepEqual(entry.params, *params) {
+			return entry.name, entry.oid
 		}
 	}
 	return "", 0
