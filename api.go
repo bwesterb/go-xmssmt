@@ -94,7 +94,6 @@ type Error interface {
 // for the given message.
 func (pk *PublicKey) Verify(sig *Signature, msg []byte) (bool, Error) {
 	pad := pk.ctx.newScratchPad()
-	ph := pk.ctx.precomputeHashes(pk.pubSeed, nil)
 	rxMsg := pk.ctx.hashMessage(pad, msg, sig.drv, pk.root, uint64(sig.seqNo))
 	staPath, leafs := pk.ctx.subTreePathForSeqNo(sig.seqNo)
 
@@ -113,8 +112,8 @@ func (pk *PublicKey) Verify(sig *Signature, msg []byte) (bool, Error) {
 		var offset uint32 = leafs[layer]
 		otsAddr.setOTS(offset)
 		lTreeAddr.setLTree(offset)
-		wotsPk := pk.ctx.wotsPkFromSig(pad, rxSig.wotsSig, rxMsg, ph, otsAddr)
-		curHash := pk.ctx.lTree(pad, wotsPk, ph, lTreeAddr)
+		wotsPk := pk.ctx.wotsPkFromSig(pad, rxSig.wotsSig, rxMsg, pk.ph, otsAddr)
+		curHash := pk.ctx.lTree(pad, wotsPk, pk.ph, lTreeAddr)
 
 		// use the authentication path to hash up the merkle tree
 		var height uint32
@@ -134,7 +133,7 @@ func (pk *PublicKey) Verify(sig *Signature, msg []byte) (bool, Error) {
 				right = curHash
 			}
 
-			pk.ctx.hInto(pad, left, right, ph, nodeAddr, curHash)
+			pk.ctx.hInto(pad, left, right, pk.ph, nodeAddr, curHash)
 			offset >>= 1
 		}
 
@@ -159,6 +158,7 @@ func (sig *Signature) MarshalBinary() ([]byte, error) {
 	return ret, nil
 }
 
+// Initializes the Signature as stored by UnmarshalBinary.
 func (sig *Signature) UnmarshalBinary(buf []byte) error {
 	var params Params
 	err := params.UnmarshalBinary(buf[:4])
@@ -201,6 +201,48 @@ func (sig *Signature) WriteInto(buf []byte) error {
 		copy(buf[stOff+uint32(i)*stLen:], stSig.wotsSig)
 		copy(buf[stOff+uint32(i)*stLen+sig.ctx.wotsSigBytes:], stSig.authPath)
 	}
+	return nil
+}
+
+// Writes the public key into buf in the same way as returned
+// by PublicKey.MarshalBinary()
+func (pk *PublicKey) WriteInto(buf []byte) error {
+	err := pk.ctx.p.WriteInto(buf)
+	if err != nil {
+		return err
+	}
+	copy(buf[4:], pk.root)
+	copy(buf[4+pk.ctx.p.N:], pk.pubSeed)
+	return nil
+}
+
+// Returns representation of the public key with parameters compressed into
+// the reserved space of the Oid prefix.  See Params.MarshalBinary().
+func (pk *PublicKey) MarshalBinary() ([]byte, error) {
+	ret := make([]byte, 4+pk.ctx.p.N*2)
+	err := pk.WriteInto(ret)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+// Initializes the PublicKey as was stored by MarshalBinary.
+func (pk *PublicKey) UnmarshalBinary(buf []byte) error {
+	var params Params
+	err := params.UnmarshalBinary(buf[:4])
+	if err != nil {
+		return err
+	}
+	pk.ctx, err = NewContext(params)
+	if err != nil {
+		return err
+	}
+	pk.root = make([]byte, params.N)
+	pk.pubSeed = make([]byte, params.N)
+	copy(pk.root, buf[4:4+params.N])
+	copy(pk.pubSeed, buf[4+params.N:4+params.N*2])
+	pk.ph = pk.ctx.precomputeHashes(pk.pubSeed, nil)
 	return nil
 }
 

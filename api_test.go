@@ -100,6 +100,22 @@ func TestDeriveSignVerify(t *testing.T) {
 	if !sigOk {
 		t.Fatalf("Verifying unmarshaled signature failed: %v", err)
 	}
+
+	pkBytes, err := pk.MarshalBinary()
+	if err != nil {
+		t.Fatalf("Failed to MarshalBinary PublicKey")
+	}
+
+	pk2 := new(PublicKey)
+	err = pk2.UnmarshalBinary(pkBytes)
+	if err != nil {
+		t.Fatalf("Failed to UnmarshalBinary PublicKey")
+	}
+
+	sigOk, err = pk2.Verify(sig, msg)
+	if !sigOk {
+		t.Fatalf("Verifying signature with unmarshaled PublicKeyfailed: %v", err)
+	}
 }
 
 func TestGenerateSignVerify(t *testing.T) {
