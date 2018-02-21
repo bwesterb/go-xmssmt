@@ -8,7 +8,6 @@ package xmssmt
 import (
 	"crypto/rand"
 	"crypto/subtle"
-	"fmt"
 )
 
 // XMSS[MT] instance.
@@ -88,6 +87,42 @@ type Error interface {
 	error
 	Locked() bool // Is this error because something (like a file) was locked?
 	Inner() error // Returns the wrapped error, if any
+}
+
+// Generate a new keypair for the given XMSS[MT] instance alg.
+//
+// Stores the private key at privKeyPath. This will create two
+// files: <privKeyPath> and <privKeyPath>.cache.  The first contains
+// the private key and the  second contains sensitive cached information
+// derived from the private key used to increase signing performance a lot.
+//
+// Use ListNames() to list the supported instances of XMSS[MT].
+//
+// For more flexibility use NewContextFromName() to create a Context and
+// then call Context.GenerateKeyPair() or Context.DeriveInto().
+//
+// NOTE Do not forget to Close() the PrivateKey.
+func GenerateKeyPair(alg, privKeyPath string) (*PrivateKey, *PublicKey, Error) {
+	ctx := NewContextFromName(alg)
+	if ctx == nil {
+		return nil, nil, errorf("%s is not a valid algorithm name", alg)
+	}
+	return ctx.GenerateKeyPair(privKeyPath)
+}
+
+// Checks whether sig is a valid signature of pk on msg.
+func Verify(pk, sig, msg []byte) (bool, Error) {
+	var theSig Signature
+	var thePk PublicKey
+	err := theSig.UnmarshalBinary(sig)
+	if err != nil {
+		return false, wrapErrorf(err, "Failed to unmarshal signature")
+	}
+	err = thePk.UnmarshalBinary(pk)
+	if err != nil {
+		return false, wrapErrorf(err, "Failed to unmarshal public key")
+	}
+	return thePk.Verify(&theSig, msg)
 }
 
 // Check whether the sig is a valid signature of this public key
@@ -246,8 +281,9 @@ func (pk *PublicKey) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
-// Generates an XMSS[MT] public/private keypair from the given seeds
+// Generates an XMSS[MT] public/private keypair
 // and stores it at the given path on the filesystem.
+//
 // NOTE Do not forget to Close() the returned PrivateKey
 func (ctx *Context) GenerateKeyPair(path string) (
 	*PrivateKey, *PublicKey, Error) {
@@ -432,23 +468,23 @@ func NewContextFromName(name string) *Context {
 }
 
 // Creates a new context.
-func NewContext(params Params) (ctx *Context, err error) {
+func NewContext(params Params) (ctx *Context, err Error) {
 	ctx = new(Context)
 	ctx.p = params
 	ctx.mt = (ctx.p.D > 1)
 
 	if ctx.p.N != 32 && ctx.p.N != 64 {
-		return nil, fmt.Errorf("Only N=32,64 are supported")
+		return nil, errorf("Only N=32,64 are supported")
 	}
 
 	if params.FullHeight%params.D != 0 {
-		return nil, fmt.Errorf("D does not divide FullHeight")
+		return nil, errorf("D does not divide FullHeight")
 	}
 
 	ctx.treeHeight = params.FullHeight / params.D
 
 	if params.WotsW != 4 && params.WotsW != 16 && params.WotsW != 256 {
-		return nil, fmt.Errorf("Only WotsW=4,16,256 is supported")
+		return nil, errorf("Only WotsW=4,16,256 is supported")
 	}
 
 	if ctx.mt {
@@ -480,4 +516,64 @@ func (pk *PublicKey) Context() *Context {
 
 func (sig *Signature) Context() *Context {
 	return sig.ctx
+}
+
+// Loads the private key from the given private key container.
+//
+// If the container wasn't properly closed, there might have been signatures
+// lost.  The amount of returned in lostSigs.
+//
+// NOTE Takes ownership of ctr.  Do not forget to Close() the  PrivateKey.
+func LoadPrivateKeyFrom(ctr PrivateKeyContainer) (
+	sk *PrivateKey, pk *PublicKey, lostSigs uint32, err Error) {
+	params := ctr.Initialized()
+	if params == nil {
+		return nil, nil, 0, errorf("Container is not initialized")
+	}
+	if !ctr.CacheInitialized() {
+		log.Logf("Cache is not initialized --- initializing...")
+		err = ctr.ResetCache()
+		if err != nil {
+			return nil, nil, 0, wrapErrorf(err, "Failed to initialize cache")
+		}
+	}
+	ctx, err := NewContext(*params)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	skBuf, err := ctr.GetPrivateKey()
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	var seqNo SignatureSeqNo
+	seqNo, lostSigs, err = ctr.GetSeqNo()
+
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	sk = &PrivateKey{
+		ctx:     ctx,
+		pubSeed: skBuf[params.N*2 : params.N*3],
+		skSeed:  skBuf[:params.N],
+		skPrf:   skBuf[params.N : params.N*2],
+		ctr:     ctr,
+		ph:      ctx.precomputeHashes(sk.pubSeed, sk.skSeed),
+		seqNo:   seqNo,
+	}
+
+	pad := ctx.newScratchPad()
+	mt, _, err := sk.getSubTree(pad, SubTreeAddress{Layer: params.D - 1})
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	sk.root = mt.Root()
+
+	pk = &PublicKey{
+		ctx:     ctx,
+		pubSeed: sk.pubSeed,
+		ph:      ctx.precomputeHashes(sk.pubSeed, nil),
+		root:    sk.root,
+	}
+	return
 }
