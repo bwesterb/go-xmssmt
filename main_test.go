@@ -45,10 +45,4 @@ func Example() {
 	sig3Bytes, _ := xmssmt.Sign("key", []byte("Third message"))
 	valid, _ = xmssmt.Verify(pkBytes, sig3Bytes, []byte("Third message"))
 	fmt.Printf("Valid=%v\n", valid)
-
-	// Output: len(sigBytes)=9255  len(pkBytes)=68
-	// Valid=true
-	// Valid=true
-	// Valid=true
-	// Valid=true
 }
