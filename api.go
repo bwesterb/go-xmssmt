@@ -518,6 +518,21 @@ func (sig *Signature) Context() *Context {
 	return sig.ctx
 }
 
+// Loads the private key from the given filesystem container.
+//
+// If the container wasn't properly closed, there might have been signatures
+// lost.  The amount of returned in lostSigs.
+//
+// NOTE Takes ownership of ctr.  Do not forget to Close() the  PrivateKey.
+func LoadPrivateKey(path string) (
+	sk *PrivateKey, pk *PublicKey, lostSigs uint32, err Error) {
+	ctr, err := OpenFSPrivateKeyContainer(path)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return LoadPrivateKeyFrom(ctr)
+}
+
 // Loads the private key from the given private key container.
 //
 // If the container wasn't properly closed, there might have been signatures
@@ -558,9 +573,9 @@ func LoadPrivateKeyFrom(ctr PrivateKeyContainer) (
 		skSeed:  skBuf[:params.N],
 		skPrf:   skBuf[params.N : params.N*2],
 		ctr:     ctr,
-		ph:      ctx.precomputeHashes(sk.pubSeed, sk.skSeed),
 		seqNo:   seqNo,
 	}
+	sk.ph = ctx.precomputeHashes(sk.pubSeed, sk.skSeed)
 
 	pad := ctx.newScratchPad()
 	mt, _, err := sk.getSubTree(pad, SubTreeAddress{Layer: params.D - 1})

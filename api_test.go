@@ -116,6 +116,10 @@ func TestDeriveSignVerify(t *testing.T) {
 	if !sigOk {
 		t.Fatalf("Verifying signature with unmarshaled PublicKeyfailed: %v", err)
 	}
+
+	if err = sk.Close(); err != nil {
+		t.Fatalf("sk.Close(): %v", err)
+	}
 }
 
 func TestGenerateSignVerify(t *testing.T) {
@@ -134,6 +138,10 @@ func TestGenerateSignVerify(t *testing.T) {
 	}
 
 	testSignThenVerify(sk, pk, t)
+
+	if err = sk.Close(); err != nil {
+		t.Fatalf("sk.Close(): %v", err)
+	}
 }
 
 func testSignThenVerify(sk *PrivateKey, pk *PublicKey, t *testing.T) {
@@ -171,6 +179,10 @@ func testGenerateSignVerify(params Params, t *testing.T) {
 		t.Fatalf("GenerateKeyPair(): %v", err)
 	}
 	testSignThenVerify(sk, pk, t)
+
+	if err = sk.Close(); err != nil {
+		t.Fatalf("sk.Close(): %v", err)
+	}
 }
 
 func TestWotsW4(t *testing.T) {
@@ -180,4 +192,50 @@ func TestWotsW4(t *testing.T) {
 func TestWotsW256(t *testing.T) {
 	SetLogger(t)
 	testGenerateSignVerify(Params{SHAKE, 32, 10, 5, 4}, t)
+}
+
+func TestPrivateKeyContainer(t *testing.T) {
+	SetLogger(t)
+
+	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
+	if err != nil {
+		t.Fatalf("TempDir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	ctx := NewContextFromName("XMSSMT-SHA2_20/4_256")
+	sk, pk, err := ctx.GenerateKeyPair(dir + "/key")
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(): %v", err)
+	}
+
+	testSignThenVerify(sk, pk, t)
+	oldSeqNo := sk.seqNo
+
+	if err = sk.Close(); err != nil {
+		t.Fatalf("sk.Close(): %v", err)
+	}
+
+	sk2, pk2, lostSigs, err := LoadPrivateKey(dir + "/key")
+	if err != nil {
+		t.Fatalf("LoadPrivateKey: %v", err)
+	}
+
+	if lostSigs != 0 {
+		t.Fatalf("Signatures were lost")
+	}
+	if sk2.seqNo != oldSeqNo {
+		t.Fatalf("seqNo was stored incorrectly %d %d", oldSeqNo, sk2.seqNo)
+	}
+
+	pkBytes, _ := pk.MarshalBinary()
+	pk2Bytes, _ := pk2.MarshalBinary()
+	if !bytes.Equal(pkBytes, pk2Bytes) {
+		t.Fatalf("public key was stored incorrectly")
+	}
+
+	testSignThenVerify(sk2, pk2, t)
+	if err = sk2.Close(); err != nil {
+		t.Fatalf("sk2.Close(): %v", err)
+	}
 }
