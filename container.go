@@ -170,6 +170,8 @@ func OpenFSPrivateKeyContainer(path string) (PrivateKeyContainer, Error) {
 
 	ctr.params = keyHeader.Params
 	ctr.privateKey = make([]byte, ctr.params.PrivateKeySize())
+	ctr.seqNo = keyHeader.SeqNo
+	ctr.borrowed = keyHeader.Borrowed
 	_, err = io.ReadAtLeast(file, ctr.privateKey, ctr.params.PrivateKeySize())
 	if err != nil {
 		return &ctr, wrapErrorf(err, "Failed to read private key")
