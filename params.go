@@ -19,7 +19,7 @@ type Params struct {
 	FullHeight uint32   // full height of tree
 	D          uint32   // number of subtrees; 1 for XMSS, >1 for XMSSMT
 
-	// WOTS+ Winternitz parameter.  Only 8, 16 and 256 are supported.
+	// WOTS+ Winternitz parameter.  Only 4, 16 and 256 are supported.
 	WotsW uint16
 }
 
