@@ -110,6 +110,33 @@ func GenerateKeyPair(alg, privKeyPath string) (*PrivateKey, *PublicKey, Error) {
 	return ctx.GenerateKeyPair(privKeyPath)
 }
 
+// Create a signature on msg using the private key stored at privKeyPath.
+//
+// For more flexibility, use PrivateKey.Sign().
+func Sign(privKeyPath string, msg []byte) (sig []byte, err Error) {
+	sk, _, _, err := LoadPrivateKey(privKeyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	theSig, err := sk.Sign(msg)
+	if err != nil {
+		sk.Close()
+		return nil, err
+	}
+
+	sig, err2 := theSig.MarshalBinary()
+	if err2 != nil {
+		sk.Close()
+		return nil, wrapErrorf(err2, "Signature.MarshalBinary")
+	}
+
+	if err = sk.Close(); err != nil {
+		return nil, err
+	}
+	return sig, nil
+}
+
 // Checks whether sig is a valid signature of pk on msg.
 func Verify(pk, sig, msg []byte) (bool, Error) {
 	var theSig Signature
@@ -214,7 +241,7 @@ func (sig *Signature) UnmarshalBinary(buf []byte) error {
 	for i = 0; i < params.D; i++ {
 		stSig := &sig.sigs[i]
 		stSig.wotsSig = make([]byte, sig.ctx.wotsSigBytes)
-		stSig.authPath = make([]byte, params.N*params.D)
+		stSig.authPath = make([]byte, params.N*sig.ctx.treeHeight)
 		copy(stSig.wotsSig, buf[stOff+i*stLen:stOff+i*stLen+sig.ctx.wotsSigBytes])
 		copy(stSig.authPath, buf[stOff+i*stLen+sig.ctx.wotsSigBytes:stOff+(i+1)*stLen])
 	}
@@ -351,7 +378,8 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 	if err != nil {
 		return nil, nil, err
 	}
-	sk.root = mt.Root()
+	sk.root = make([]byte, ctx.p.N)
+	copy(sk.root, mt.Root())
 
 	pk := PublicKey{
 		ctx:     ctx,
@@ -378,10 +406,13 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 	mts := make([]*merkleTree, len(staPath))
 	wotsSigs := make([][]byte, len(staPath))
 	for i := len(staPath) - 1; i >= 0; i-- {
-		mts[i], wotsSigs[i], err = sk.getSubTree(pad, staPath[i])
+		var wotsSig []byte
+		mts[i], wotsSig, err = sk.getSubTree(pad, staPath[i])
 		if err != nil {
 			return nil, err
 		}
+		wotsSigs[i] = make([]byte, len(wotsSig))
+		copy(wotsSigs[i], wotsSig)
 	}
 
 	// Assemble the signature.
@@ -582,7 +613,8 @@ func LoadPrivateKeyFrom(ctr PrivateKeyContainer) (
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	sk.root = mt.Root()
+	sk.root = make([]byte, ctx.p.N)
+	copy(sk.root, mt.Root())
 
 	pk = &PublicKey{
 		ctx:     ctx,
