@@ -391,6 +391,19 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 	return &sk, &pk, nil
 }
 
+// Ensures there at most the given number of signature sequence numbers are
+// reserved for use by Sign().
+//
+// In a typical setup, each call to Sign() will write and fsync() the current
+// signature sequence number to disk, such that signature sequence numbers
+// aren't reused in a crash.  This does slow down Sign() quite a bit.
+// To speed things up, we can reserve signatures; write the fact that we did
+// this to disk and correct the signature sequence number on Close().
+// The drawback is that with a crash or a missing Close(), we will loose the
+// signatures that were reserved.
+func (sk *PrivateKey) BorrowAtMost(amount uint32) {
+}
+
 // Signs the given message.
 func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 	pad := sk.ctx.newScratchPad()
