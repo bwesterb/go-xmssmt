@@ -6,6 +6,7 @@ package xmssmt
 // Contains majority of the API
 
 import (
+	"container/heap"
 	"crypto/rand"
 	"crypto/subtle"
 	"sync"
@@ -689,4 +690,21 @@ func (sk *PrivateKey) UnretiredSeqNos() uint32 {
 // Returns the number of subtrees that are cached
 func (sk *PrivateKey) CachedSubTrees() int {
 	return len(sk.subTreeReady)
+}
+
+// You probably should not use this function
+//
+// Sets the signature sequence number.  Be very careful not to use the same
+// signature sequence number twice.
+func (sk *PrivateKey) DangerousSetSeqNo(seqNo SignatureSeqNo) {
+	sk.mux.Lock()
+	defer sk.mux.Unlock()
+	sk.seqNo = seqNo
+
+	// We might forget to drop some cached subtrees, but that is probably
+	// the least of our worries now.
+	emptyHeap := uint32Heap([]uint32{})
+	sk.retiredSeqNos = &emptyHeap
+	heap.Init(sk.retiredSeqNos)
+	sk.leastSeqNoInUse = seqNo
 }
