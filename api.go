@@ -387,6 +387,9 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 		return nil, nil, err
 	}
 
+	// Precompute subtrees for the first few signatures.
+	sk.getSubTree(pad, SubTreeAddress{Layer: 0, Tree: 0})
+
 	return sk, sk.PublicKey(), nil
 }
 
