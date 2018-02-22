@@ -41,19 +41,29 @@ type SignatureSeqNo uint64
 
 // XMSS[MT] private key
 type PrivateKey struct {
-	ctx     *Context // context, which contains algorithm parameters.
-	pubSeed []byte
-	skSeed  []byte
-	skPrf   []byte
-	root    []byte         // root node
-	seqNo   SignatureSeqNo // first unused signature
+	skSeed  []byte         // first part of the private key
+	skPrf   []byte         // other part of the private key
+	pubSeed []byte         // first part of the public key
+	root    []byte         // root node, the other part of the public key
+	seqNo   SignatureSeqNo // first unused signature sequence number
+
+	ctx *Context          // context, which contains algorithm parameters.
+	ph  precomputedHashes // precomputed hashes
 	// container that stores the secret key, signature sequence number
 	// and caches the subtrees
 	ctr PrivateKeyContainer
+
 	// Number of signatures reserved from the container.
 	// See PrivateKeyContainer.Borrow()
 	borrowed uint32
-	ph       precomputedHashes
+
+	// The least signature sequence number that might still be in use
+	// by a Sign() operation.
+	leastSeqNoInUse SignatureSeqNo
+
+	// Heap of retired seqNo's larger than lesatSeqNoInUse.
+	// See PrivateKey.retireSeqNo().
+	retiredSeqNos *uint32Heap
 
 	mux  sync.Mutex
 	cond *sync.Cond // signalled when a subtree is generated
@@ -379,7 +389,7 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 	return sk, sk.PublicKey(), nil
 }
 
-// Ensures there at most the given number of signature sequence numbers are
+// Ensures there are exactly the given number of signature sequence numbers are
 // reserved for use by Sign().
 //
 // In a typical setup, each call to Sign() will write and fsync() the current
@@ -389,7 +399,36 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 // this to disk and correct the signature sequence number on Close().
 // The drawback is that with a crash or a missing Close(), we will loose the
 // signatures that were reserved.
-func (sk *PrivateKey) BorrowAtMost(amount uint32) {
+func (sk *PrivateKey) BorrowExactly(amount uint32) Error {
+	sk.mux.Lock()
+	defer sk.mux.Unlock()
+
+	if sk.borrowed == amount {
+		return nil
+	}
+
+	if sk.borrowed > amount {
+		err := sk.ctr.SetSeqNo(sk.seqNo + SignatureSeqNo(amount))
+		if err != nil {
+			return err
+		}
+		sk.borrowed = amount
+		return nil
+	}
+
+	// sk.borrowed < amount
+	_, err := sk.ctr.BorrowSeqNos(amount - sk.borrowed)
+	if err != nil {
+		return err
+	}
+	sk.borrowed = amount
+	return nil
+}
+
+// Returns the number of signature sequence numbers borrowed from the container.
+// See BorrowExactly() or PrivateKeyContainer.BorrowSeqNos()
+func (sk *PrivateKey) BorrowedSeqNos() uint32 {
+	return sk.borrowed
 }
 
 // Signs the given message.
@@ -399,6 +438,7 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 	if err != nil {
 		return nil, err
 	}
+	defer sk.retireSeqNo(seqNo)
 
 	// Compute the path of subtrees
 	staPath, leafs := sk.ctx.subTreePathForSeqNo(seqNo)
@@ -631,4 +671,22 @@ func (sk *PrivateKey) PublicKey() *PublicKey {
 		root:    sk.root,
 	}
 	return &ret
+}
+
+// Returns the number of unretired signature sequence numbers.
+//
+// The PrivateKey keeps track of which signature sequence numbers might
+// still be in use by a Sign() operation.  If a Sign() operation finishes
+// it "retires" the signature seqno it used so that private key container
+// can drop caches that are no longer relevant.
+func (sk *PrivateKey) UnretiredSeqNos() uint32 {
+	sk.mux.Lock()
+	defer sk.mux.Unlock()
+	return uint32(sk.seqNo) - uint32(sk.leastSeqNoInUse) -
+		uint32(sk.retiredSeqNos.Len())
+}
+
+// Returns the number of subtrees that are cached
+func (sk *PrivateKey) CachedSubTrees() int {
+	return len(sk.subTreeReady)
 }

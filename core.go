@@ -3,6 +3,7 @@ package xmssmt
 // The core of XMSS and XMSSMT.
 
 import (
+	"container/heap"
 	"runtime"
 	"sync"
 )
@@ -74,10 +75,10 @@ func (mt *merkleTree) AuthPath(leaf uint32) []byte {
 // Compute a subtree by expanding the secret seed into WOTS+ keypairs
 // and then hashing up.
 func (ctx *Context) genSubTree(pad scratchPad, skSeed, pubSeed []byte,
-	addr address) merkleTree {
+	sta SubTreeAddress) merkleTree {
 	mt := newMerkleTree(ctx.treeHeight+1, ctx.p.N)
 	ctx.genSubTreeInto(pad, skSeed, ctx.precomputeHashes(pubSeed, skSeed),
-		addr, mt)
+		sta, mt)
 	return mt
 }
 
@@ -85,13 +86,14 @@ func (ctx *Context) genSubTree(pad scratchPad, skSeed, pubSeed []byte,
 // and then hashing up.
 // mt should have height=ctx.treeHeight+1 and n=ctx.p.N.
 func (ctx *Context) genSubTreeInto(pad scratchPad, skSeed []byte,
-	ph precomputedHashes, addr address, mt merkleTree) {
+	ph precomputedHashes, sta SubTreeAddress, mt merkleTree) {
 
 	// TODO we compute the leafs in parallel.  Is it worth computing
 	// the internal nodes in parallel?
-	log.Logf("Generating subtree %v ...", addr)
+	log.Logf("Generating subtree %v ...", sta)
 
 	var otsAddr, lTreeAddr, nodeAddr address
+	addr := sta.address()
 	otsAddr.setSubTreeFrom(addr)
 	otsAddr.setType(ADDR_TYPE_OTS)
 	lTreeAddr.setSubTreeFrom(addr)
@@ -300,7 +302,7 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 		return
 	}
 
-	sk.ctx.genSubTreeInto(pad, sk.skSeed, sk.ph, sta.address(), mtDeref)
+	sk.ctx.genSubTreeInto(pad, sk.skSeed, sk.ph, sta, mtDeref)
 
 	// We're not done yet.  We need to generate the WOTS+ signature
 	// and for this, possibly, a few other sub trees.
@@ -443,6 +445,10 @@ func (ctx *Context) newPrivateKey(pad scratchPad, pubSeed, skSeed, skPrf []byte,
 	// Initialize helper data structures
 	ret.cond = sync.NewCond(&ret.mux)
 	ret.subTreeReady = make(map[SubTreeAddress]bool)
+	emptyHeap := uint32Heap([]uint32{})
+	ret.retiredSeqNos = &emptyHeap
+	heap.Init(ret.retiredSeqNos)
+	ret.leastSeqNoInUse = seqNo
 
 	// Register the cached subtrees
 	stas, err := ctr.ListSubTrees()
@@ -463,4 +469,52 @@ func (ctx *Context) newPrivateKey(pad scratchPad, pubSeed, skSeed, skPrf []byte,
 	copy(ret.root, mt.Root())
 
 	return &ret, nil
+}
+
+// Retires the given signature sequence number.
+//
+// See PrivateKey.UnretiredSeqNos()
+func (sk *PrivateKey) retireSeqNo(seqNo SignatureSeqNo) {
+	sk.mux.Lock()
+	defer sk.mux.Unlock()
+	if sk.leastSeqNoInUse != seqNo {
+		heap.Push(sk.retiredSeqNos, uint32(seqNo))
+		return
+	}
+
+	// We have sk.leastSeqNoInUse == seqNo.  Check if we can increment
+	// the leastSeqNoInUse counter by using seqNos in retiredSeqNos.
+	sk.incLeastSeqNoInUse()
+	for sk.retiredSeqNos.Len() != 0 &&
+		sk.retiredSeqNos.Min() == uint32(sk.leastSeqNoInUse) {
+		heap.Pop(sk.retiredSeqNos)
+		sk.incLeastSeqNoInUse()
+	}
+}
+
+// Increments leastSeqNoInUse and drops cached subtrees which have become
+// irrelevant.
+//
+// NOTE Assumes a lock on sk.mux.
+func (sk *PrivateKey) incLeastSeqNoInUse() {
+	sk.leastSeqNoInUse += 1
+
+	// Check if we can drop cached subtrees
+	stas, leafs := sk.ctx.subTreePathForSeqNo(sk.leastSeqNoInUse)
+	for i, sta := range stas {
+		if leafs[i] != 0 {
+			break
+		}
+
+		staToDrop := SubTreeAddress{
+			Layer: sta.Layer,
+			Tree:  sta.Tree - 1,
+		}
+		log.Logf("Dropping cached subtree %v ...", staToDrop)
+		if err := sk.ctr.DropSubTree(staToDrop); err != nil {
+			log.Logf("  failed to drop subtree %v: %v", staToDrop, err)
+		} else {
+			delete(sk.subTreeReady, staToDrop)
+		}
+	}
 }

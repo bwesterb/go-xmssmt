@@ -2,6 +2,9 @@ package xmssmt
 
 import (
 	"encoding/hex"
+	"io/ioutil"
+	"os"
+	"sync"
 	"testing"
 )
 
@@ -84,15 +87,15 @@ func TestGenLeaf(t *testing.T) {
 func testGenSubTree(ctx *Context, expect string, t *testing.T) {
 	var skSeed []byte = make([]byte, ctx.p.N)
 	var pubSeed []byte = make([]byte, ctx.p.N)
-	var addr [8]uint32
 	for i := 0; i < int(ctx.p.N); i++ {
 		skSeed[i] = byte(i)
 		pubSeed[i] = byte(2 * i)
 	}
-	for i := 0; i < 8; i++ {
-		addr[i] = 500000000 * uint32(i)
+	sta := SubTreeAddress{
+		Layer: 0,
+		Tree:  2147483649000000000,
 	}
-	mt := ctx.genSubTree(ctx.newScratchPad(), skSeed, pubSeed, addr)
+	mt := ctx.genSubTree(ctx.newScratchPad(), skSeed, pubSeed, sta)
 	val := hex.EncodeToString(mt.Node(ctx.treeHeight, 0))
 	if val != expect {
 		t.Errorf("%s genSubTree generated root %s instead of %s", ctx.Name(), val, expect)
@@ -164,10 +167,10 @@ func benchmarkGenSubTree(ctx *Context, b *testing.B) {
 	skSeed := make([]byte, ctx.p.N)
 	pubSeed := make([]byte, ctx.p.N)
 	pad := ctx.newScratchPad()
-	var addr address
+	var sta SubTreeAddress
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ctx.genSubTree(pad, skSeed, pubSeed, addr)
+		ctx.genSubTree(pad, skSeed, pubSeed, sta)
 	}
 }
 
@@ -193,4 +196,41 @@ func benchmarkGenLeaf(ctx *Context, b *testing.B) {
 		ctx.genLeaf(ctx.newScratchPad(), skSeed,
 			ctx.precomputeHashes(pubSeed, skSeed), lTreeAddr, otsAddr)
 	}
+}
+
+func TestSeqNoRetirement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping TestSeqNoRetirement")
+	}
+	SetLogger(t)
+	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
+	if err != nil {
+		t.Fatalf("TempDir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	ctx := NewContextFromName("XMSSMT-SHA2_20/4_256")
+	sk, _, err := ctx.GenerateKeyPair(dir + "/key")
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(): %v", err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(4)
+	for w := 0; w < 4; w++ {
+		go func() {
+			for i := 0; i < 1000; i++ {
+				sk.Sign([]byte("some message"))
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	t.Logf("unretired=%d cachedSubTrees=%d", sk.UnretiredSeqNos(),
+		sk.CachedSubTrees())
+
+	if err = sk.Close(); err != nil {
+		t.Fatalf("sk.Close(): %v", err)
+	}
+
 }
