@@ -3,6 +3,7 @@ package xmssmt
 import (
 	"encoding/binary"
 	"fmt"
+	goLog "log"
 )
 
 // Encodes the given uint64 into the buffer out in Big Endian
@@ -63,8 +64,13 @@ func wrapErrorf(err error, format string, a ...interface{}) *errorImpl {
 }
 
 type dummyLogger struct{}
+type stdlibLogger struct{}
 
 func (logger *dummyLogger) Logf(format string, a ...interface{}) {}
+
+func (logger *stdlibLogger) Logf(format string, a ...interface{}) {
+	goLog.Printf(format, a...)
+}
 
 var log Logger
 
@@ -72,8 +78,19 @@ type Logger interface {
 	Logf(format string, a ...interface{})
 }
 
-// Enables logging
+// Enables logging to log package.  For more flexibility, see SetLogger().
+func EnableLogging() {
+	SetLogger(&stdlibLogger{})
+}
+
+// Enables logging.  Disable logging by passing nil.
+//
+// Use EnableLogging if you want to log to the log package.
 func SetLogger(logger Logger) {
+	if logger == nil {
+		log = &dummyLogger{}
+		return
+	}
 	log = logger
 }
 
