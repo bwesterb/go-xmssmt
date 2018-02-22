@@ -338,7 +338,7 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 	// NOTE as we're not holding the lock, the parent tree might have
 	// been generated in the meantime, but this won't hurt.
 	if !parentTreeReady {
-		for layer := sk.ctx.p.D; layer > sta.Layer; layer-- {
+		for layer := sk.ctx.p.D - 1; layer > sta.Layer; layer-- {
 			ancSta := SubTreeAddress{
 				Layer: layer,
 				Tree:  sta.Tree >> (sk.ctx.treeHeight * (layer - sta.Layer)),
