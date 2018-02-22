@@ -9,6 +9,7 @@ import (
 	"container/heap"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"sync"
 )
 
@@ -238,7 +239,7 @@ func (sig *Signature) MarshalBinary() ([]byte, error) {
 	return ret, nil
 }
 
-// Initializes the Signature as stored by UnmarshalBinary.
+// Initializes the Signature as stored by MarshalBinary.
 func (sig *Signature) UnmarshalBinary(buf []byte) error {
 	var params Params
 	err := params.UnmarshalBinary(buf[:4])
@@ -282,6 +283,24 @@ func (sig *Signature) WriteInto(buf []byte) error {
 		copy(buf[stOff+uint32(i)*stLen+sig.ctx.wotsSigBytes:], stSig.authPath)
 	}
 	return nil
+}
+
+// Initializes the Signature as stored by MarshalText.
+func (pk *PublicKey) UnmarshalText(text []byte) error {
+	buf, err := base64.RawURLEncoding.DecodeString(string(text))
+	if err != nil {
+		return err
+	}
+	return pk.UnmarshalBinary(buf)
+}
+
+// Returns unpadded URL base64 encoded version of the public key
+func (pk *PublicKey) MarshalText() ([]byte, error) {
+	buf, err := pk.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(base64.RawURLEncoding.EncodeToString(buf)), nil
 }
 
 // Writes the public key into buf in the same way as returned
