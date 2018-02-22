@@ -211,6 +211,7 @@ func TestSeqNoRetirement(t *testing.T) {
 
 	ctx := NewContextFromName("XMSSMT-SHA2_20/4_256")
 	sk, _, err := ctx.GenerateKeyPair(dir + "/key")
+	sk.BorrowExactly(4000)
 	if err != nil {
 		t.Fatalf("GenerateKeyPair(): %v", err)
 	}
