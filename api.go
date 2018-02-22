@@ -8,6 +8,7 @@ package xmssmt
 import (
 	"crypto/rand"
 	"crypto/subtle"
+	"sync"
 )
 
 // XMSS[MT] instance.
@@ -53,6 +54,12 @@ type PrivateKey struct {
 	// See PrivateKeyContainer.Borrow()
 	borrowed uint32
 	ph       precomputedHashes
+
+	mux  sync.Mutex
+	cond *sync.Cond // signalled when a subtree is generated
+	// subTreeReady[sta] is true if and only if the sub tree with the given
+	// address is allocated and filled.
+	subTreeReady map[SubTreeAddress]bool
 }
 
 // XMSS[MT] public key
@@ -363,32 +370,13 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 		return nil, nil, err
 	}
 
-	sk := PrivateKey{
-		ctx:     ctx,
-		pubSeed: pubSeed,
-		ph:      ctx.precomputeHashes(pubSeed, skSeed),
-		skSeed:  skSeed,
-		seqNo:   0,
-		skPrf:   skPrf,
-		ctr:     ctr,
-	}
-
 	pad := ctx.newScratchPad()
-	mt, _, err := sk.getSubTree(pad, SubTreeAddress{Layer: ctx.p.D - 1})
+	sk, err := ctx.newPrivateKey(pad, pubSeed, skSeed, skPrf, 0, ctr)
 	if err != nil {
 		return nil, nil, err
 	}
-	sk.root = make([]byte, ctx.p.N)
-	copy(sk.root, mt.Root())
 
-	pk := PublicKey{
-		ctx:     ctx,
-		pubSeed: pubSeed,
-		ph:      ctx.precomputeHashes(pubSeed, nil),
-		root:    sk.root,
-	}
-
-	return &sk, &pk, nil
+	return sk, sk.PublicKey(), nil
 }
 
 // Ensures there at most the given number of signature sequence numbers are
@@ -466,6 +454,8 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 
 // Close the underlying container
 func (sk *PrivateKey) Close() Error {
+	sk.mux.Lock()
+	defer sk.mux.Unlock()
 	if sk.borrowed > 0 {
 		sk.seqNo -= SignatureSeqNo(sk.borrowed)
 		sk.borrowed = 0
@@ -474,7 +464,9 @@ func (sk *PrivateKey) Close() Error {
 			return err
 		}
 	}
-	return sk.ctr.Close()
+	err := sk.ctr.Close()
+	sk.cond.Broadcast()
+	return err
 }
 
 // Return new context for the given XMSS[MT] oid (and nil if it's unknown).
@@ -585,6 +577,7 @@ func LoadPrivateKey(path string) (
 // NOTE Takes ownership of ctr.  Do not forget to Close() the  PrivateKey.
 func LoadPrivateKeyFrom(ctr PrivateKeyContainer) (
 	sk *PrivateKey, pk *PublicKey, lostSigs uint32, err Error) {
+	// First check if the container is sane.
 	params := ctr.Initialized()
 	if params == nil {
 		return nil, nil, 0, errorf("Container is not initialized")
@@ -600,6 +593,8 @@ func LoadPrivateKeyFrom(ctr PrivateKeyContainer) (
 	if err != nil {
 		return nil, nil, 0, err
 	}
+
+	// Extract the private key and signature seqno
 	skBuf, err := ctr.GetPrivateKey()
 	if err != nil {
 		return nil, nil, 0, err
@@ -611,29 +606,29 @@ func LoadPrivateKeyFrom(ctr PrivateKeyContainer) (
 		return nil, nil, 0, err
 	}
 
-	sk = &PrivateKey{
-		ctx:     ctx,
-		pubSeed: skBuf[params.N*2 : params.N*3],
-		skSeed:  skBuf[:params.N],
-		skPrf:   skBuf[params.N : params.N*2],
-		ctr:     ctr,
-		seqNo:   seqNo,
-	}
-	sk.ph = ctx.precomputeHashes(sk.pubSeed, sk.skSeed)
-
+	// Create the private and public key structures
 	pad := ctx.newScratchPad()
-	mt, _, err := sk.getSubTree(pad, SubTreeAddress{Layer: params.D - 1})
+	sk, err = ctx.newPrivateKey(
+		pad,
+		skBuf[params.N*2:params.N*3],
+		skBuf[:params.N],
+		skBuf[params.N:params.N*2],
+		seqNo,
+		ctr)
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	sk.root = make([]byte, ctx.p.N)
-	copy(sk.root, mt.Root())
+	pk = sk.PublicKey()
+	return
+}
 
-	pk = &PublicKey{
-		ctx:     ctx,
+// Returns the PublicKey for this PrivateKey.
+func (sk *PrivateKey) PublicKey() *PublicKey {
+	ret := PublicKey{
+		ctx:     sk.ctx,
 		pubSeed: sk.pubSeed,
-		ph:      ctx.precomputeHashes(sk.pubSeed, nil),
+		ph:      sk.ctx.precomputeHashes(sk.pubSeed, nil),
 		root:    sk.root,
 	}
-	return
+	return &ret
 }
