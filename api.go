@@ -287,20 +287,20 @@ func (sig *Signature) WriteInto(buf []byte) error {
 
 // Initializes the Signature as stored by MarshalText.
 func (pk *PublicKey) UnmarshalText(text []byte) error {
-	buf, err := base64.RawURLEncoding.DecodeString(string(text))
+	buf, err := base64.StdEncoding.DecodeString(string(text))
 	if err != nil {
 		return err
 	}
 	return pk.UnmarshalBinary(buf)
 }
 
-// Returns unpadded URL base64 encoded version of the public key
+// Returns base64 encoded version of the public key
 func (pk *PublicKey) MarshalText() ([]byte, error) {
 	buf, err := pk.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
-	return []byte(base64.RawURLEncoding.EncodeToString(buf)), nil
+	return []byte(base64.StdEncoding.EncodeToString(buf)), nil
 }
 
 // Writes the public key into buf in the same way as returned
