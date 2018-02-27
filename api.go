@@ -730,3 +730,8 @@ func (sk *PrivateKey) DangerousSetSeqNo(seqNo SignatureSeqNo) {
 	heap.Init(sk.retiredSeqNos)
 	sk.leastSeqNoInUse = seqNo
 }
+
+// Returns the signature sequence used next.
+func (sk *PrivateKey) SeqNo() SignatureSeqNo {
+	return sk.seqNo
+}
