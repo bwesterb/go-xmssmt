@@ -412,6 +412,16 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 	return sk, sk.PublicKey(), nil
 }
 
+// Atomically runs BorrowExactly(amount) if BorrowedSeqNos()  <= treshHold.
+func (sk *PrivateKey) BorrowExactlyIfBelow(amount, treshHold uint32) Error {
+	sk.mux.Lock()
+	defer sk.mux.Unlock()
+	if sk.borrowed <= treshHold {
+		return sk.borrowExactly(amount)
+	}
+	return nil
+}
+
 // Ensures there are exactly the given number of signature sequence numbers are
 // reserved for use by Sign().
 //
@@ -425,7 +435,11 @@ func (ctx *Context) DeriveInto(ctr PrivateKeyContainer,
 func (sk *PrivateKey) BorrowExactly(amount uint32) Error {
 	sk.mux.Lock()
 	defer sk.mux.Unlock()
+	return sk.borrowExactly(amount)
+}
 
+// Implementation of BorrowExactly.  Requires sk.mux lock.
+func (sk *PrivateKey) borrowExactly(amount uint32) Error {
 	if sk.borrowed == amount {
 		return nil
 	}
