@@ -377,6 +377,11 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 func (sk *PrivateKey) getSeqNo() (SignatureSeqNo, Error) {
 	sk.mux.Lock()
 	defer sk.mux.Unlock()
+
+	if uint64(sk.seqNo) == sk.ctx.p.MaxSignatureSeqNo() {
+		return 0, errorf("No unused signatures left")
+	}
+
 	if sk.borrowed > 0 {
 		// If we have some borrowed sequence numbers, we can simply use one
 		// of them.
@@ -432,6 +437,10 @@ func (ctx *Context) newScratchPad() scratchPad {
 func (ctx *Context) newPrivateKey(pad scratchPad, pubSeed, skSeed, skPrf []byte,
 	seqNo SignatureSeqNo, ctr PrivateKeyContainer) (
 	*PrivateKey, Error) {
+
+	if uint64(seqNo) > ctx.p.MaxSignatureSeqNo() {
+		return nil, errorf("Signature sequence number is too large")
+	}
 	ret := PrivateKey{
 		ctx:     ctx,
 		skSeed:  skSeed,
