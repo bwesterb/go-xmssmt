@@ -386,17 +386,30 @@ func (sk *PrivateKey) getSeqNo() (SignatureSeqNo, Error) {
 		// If we have some borrowed sequence numbers, we can simply use one
 		// of them.
 		sk.borrowed -= 1
-		sk.seqNo += 1
-		return sk.seqNo - 1, nil
+	} else {
+		// If we didn't borrow sequence numbers, then we have to increment
+		// the sequence number in the container before we continue.
+		err := sk.ctr.SetSeqNo(sk.seqNo + 1)
+		if err != nil {
+			return 0, err
+		}
 	}
 
-	// If we didn't borrow sequence numbers, then we have to increment
-	// the sequence number in the container before we continue.
-	err := sk.ctr.SetSeqNo(sk.seqNo + 1)
-	if err != nil {
-		return 0, err
-	}
 	sk.seqNo += 1
+
+	// Check if we need to precompute a subtree
+	if sk.precomputeNextSubTree &&
+		(uint64(sk.seqNo)&((1<<sk.ctx.treeHeight)-1) == 0) {
+		go func(sta SubTreeAddress) {
+			log.Logf("Precomputing subtree %v", sta)
+			sk.getSubTree(sk.ctx.newScratchPad(), sta)
+			log.Logf("Finished precomputing subtree %v", sta)
+		}(SubTreeAddress{
+			Layer: 0,
+			Tree:  (uint64(sk.seqNo) >> sk.ctx.treeHeight) + 1,
+		})
+	}
+
 	return sk.seqNo - 1, nil
 }
 

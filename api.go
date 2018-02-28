@@ -72,6 +72,9 @@ type PrivateKey struct {
 	// subTreeReady[sta] is true if and only if the sub tree with the given
 	// address is allocated and filled.
 	subTreeReady map[SubTreeAddress]bool
+
+	// If true, will precompute a subtree in advance
+	precomputeNextSubTree bool
 }
 
 // XMSS[MT] public key
@@ -747,4 +750,31 @@ func (sk *PrivateKey) DangerousSetSeqNo(seqNo SignatureSeqNo) {
 // Returns the signature sequence used next.
 func (sk *PrivateKey) SeqNo() SignatureSeqNo {
 	return sk.seqNo
+}
+
+// Enable subtree precomputation.
+//
+// By default, a subtree is computed when it's needed.  So with subtrees of
+// height 10, every 1024th Sign() will be slow because a new subtree
+// is generated.
+//
+// When subtree precomputation is enabled, the next subtree is already computed
+// in a separate thread when the previous subtree is consumed.  This is useful
+// when running a server which cannot tolerate a sudden spike in the duration
+// of the Sign() function.
+func (sk *PrivateKey) EnableSubTreePrecomputation() {
+	sk.mux.Lock()
+	sk.precomputeNextSubTree = true
+
+	// ensure the next subtree is computed
+	nextSta := SubTreeAddress{
+		Layer: 0,
+		Tree:  (uint64(sk.seqNo) >> sk.ctx.treeHeight) + 1,
+	}
+	_, nextTreeExists := sk.subTreeReady[nextSta]
+	sk.mux.Unlock()
+
+	if !nextTreeExists {
+		go sk.getSubTree(sk.ctx.newScratchPad(), nextSta)
+	}
 }
