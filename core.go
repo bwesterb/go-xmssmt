@@ -439,7 +439,9 @@ func (ctx *Context) newPrivateKey(pad scratchPad, pubSeed, skSeed, skPrf []byte,
 	*PrivateKey, Error) {
 
 	if uint64(seqNo) > ctx.p.MaxSignatureSeqNo() {
-		return nil, errorf("Signature sequence number is too large")
+		return nil, errorf(
+			"Signature sequence number is too large: %d > %d",
+			seqNo, ctx.p.MaxSignatureSeqNo())
 	}
 	ret := PrivateKey{
 		ctx:     ctx,

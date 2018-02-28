@@ -534,7 +534,6 @@ func (sk *PrivateKey) Close() Error {
 	sk.mux.Lock()
 	defer sk.mux.Unlock()
 	if sk.borrowed > 0 {
-		sk.seqNo -= SignatureSeqNo(sk.borrowed)
 		sk.borrowed = 0
 		err := sk.ctr.SetSeqNo(sk.seqNo)
 		if err != nil {
