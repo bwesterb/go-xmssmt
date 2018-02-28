@@ -317,7 +317,7 @@ func (ctr *fsContainer) writeCacheHeader() Error {
 	}
 	magic, _ := hex.DecodeString(FS_CONTAINER_CACHE_MAGIC)
 	copy(cacheHeader.Magic[:], magic)
-	err = binary.Write(ctr.cacheFile, binary.BigEndian, &cacheHeader)
+	err = binary.Write(ctr.cacheFile, binary.BigEndian, cacheHeader)
 	if err != nil {
 		ctr.cacheFile.Close()
 		return wrapErrorf(err, "failed to write to cache file")
@@ -397,7 +397,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 		Address:   address,
 	}
 	bufWriter := byteswriter.NewWriter(buf)
-	err2 = binary.Write(bufWriter, binary.BigEndian, &header)
+	err2 = binary.Write(bufWriter, binary.BigEndian, header)
 	if err2 != nil {
 		err = wrapErrorf(err2, "Failed to write subtree header in cache")
 		return
@@ -457,7 +457,7 @@ func (ctr *fsContainer) DropSubTree(address SubTreeAddress) Error {
 
 	bufWriter := byteswriter.NewWriter(buf)
 	bFalse := false
-	err2 = binary.Write(bufWriter, binary.BigEndian, &bFalse)
+	err2 = binary.Write(bufWriter, binary.BigEndian, bFalse)
 	if err2 != nil {
 		return wrapErrorf(err2, "Failed to write subtree header in cache")
 	}
@@ -546,7 +546,7 @@ func (ctr *fsContainer) writeKeyFile() Error {
 	}
 	magic, _ := hex.DecodeString(FS_CONTAINER_KEY_MAGIC)
 	copy(keyHeader.Magic[:], magic)
-	if err = binary.Write(tmpFile, binary.BigEndian, &keyHeader); err != nil {
+	if err = binary.Write(tmpFile, binary.BigEndian, keyHeader); err != nil {
 		tmpFile.Close()
 		return wrapErrorf(err, "failed to write temporary key file")
 	}
