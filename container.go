@@ -225,10 +225,10 @@ func (ctr *fsContainer) openCache() Error {
 			return wrapErrorf(err, "Failed to read subtree header in cache")
 		}
 
-		if treeHeader.Allocated {
-			ctr.cacheIdxLut[treeHeader.Address] = idx
-		} else {
+		if treeHeader.Allocated == 0 {
 			heap.Push(ctr.cacheFreeIdx, idx)
+		} else {
+			ctr.cacheIdxLut[treeHeader.Address] = idx
 		}
 	}
 
@@ -253,7 +253,8 @@ type fsCacheHeader struct {
 
 // Header of a cached subtree
 type fsSubTreeHeader struct {
-	Allocated bool
+	// In older versions of Go, binary.Read/Write do not support bool
+	Allocated uint8
 	Address   SubTreeAddress
 }
 
@@ -393,7 +394,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 
 	// Write information
 	header := fsSubTreeHeader{
-		Allocated: true,
+		Allocated: 1,
 		Address:   address,
 	}
 	bufWriter := byteswriter.NewWriter(buf)
@@ -456,7 +457,7 @@ func (ctr *fsContainer) DropSubTree(address SubTreeAddress) Error {
 	}
 
 	bufWriter := byteswriter.NewWriter(buf)
-	bFalse := false
+	var bFalse uint8 = 0
 	err2 = binary.Write(bufWriter, binary.BigEndian, &bFalse)
 	if err2 != nil {
 		return wrapErrorf(err2, "Failed to write subtree header in cache")
