@@ -72,6 +72,10 @@ type PrivateKey struct {
 	// subTreeReady[sta] is true if and only if the sub tree with the given
 	// address is allocated and filled.
 	subTreeReady map[SubTreeAddress]bool
+	// Additionally, subTreeChecked[sta] is true if the tree has been
+	// generated on this run or the checksum has been checked if loaded
+	// from the private key container.
+	subTreeChecked map[SubTreeAddress]bool
 
 	// If true, will precompute a subtree in advance
 	precomputeNextSubTree bool

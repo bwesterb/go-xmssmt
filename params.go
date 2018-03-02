@@ -176,9 +176,10 @@ func (params *Params) BareSubTreeSize() int {
 
 // Returns the size of the cached subtrees for this parameter.
 func (params *Params) CachedSubTreeSize() int {
-	// A cached subtree contains the merkle subtree and possibly
-	// a WOTS+ signature of the substree above it.
-	return params.BareSubTreeSize() + int(params.WotsSignatureSize())
+	// A cached subtree contains the merkle subtree,
+	// space for  a WOTS+ signature of the substree above it (if it's not
+	// the root) and a 64bit checksum.
+	return params.BareSubTreeSize() + int(params.WotsSignatureSize()) + 8
 }
 
 // Size of the private key as stored by PrivateKeyContainer.

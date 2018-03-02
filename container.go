@@ -30,6 +30,9 @@ type PrivateKeyContainer interface {
 	// have a buffer yet, allocate it of the size params.CachedSubTreeSize()
 	// with params as specified in the last call to Reset().
 	// The exists return value indicates whether the subtree was present.
+	// The container should write changes to buf back to the storage.
+	// The containe does not have to ensure integrity, a checksum is added
+	// to the end of the buffer.
 	GetSubTree(address SubTreeAddress) (buf []byte, exists bool, err Error)
 
 	// Returns whether the given subtree is in the cache.  Returns false

@@ -3,7 +3,10 @@ package xmssmt
 // The core of XMSS and XMSSMT.
 
 import (
+	"github.com/cespare/xxhash"
+
 	"container/heap"
+	"encoding/binary"
 	"runtime"
 	"sync"
 )
@@ -246,6 +249,7 @@ func (ctx *Context) subTreePathForSeqNo(seqNo SignatureSeqNo) (
 func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 	mt *merkleTree, wotsSig []byte, err Error) {
 	alreadyDone := false
+	justCheckTheChecksum := false
 	isRoot := (sta.Layer == sk.ctx.p.D-1)
 	parentSta := SubTreeAddress{
 		Layer: sta.Layer + 1,
@@ -270,7 +274,8 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 			}
 			if subTreeReady {
 				alreadyDone = true
-				break // The sub tree is ready and filled, so return!
+				justCheckTheChecksum = !sk.subTreeChecked[sta]
+				break
 			}
 
 			// The sub tree exists, but is being filled by another thread.
@@ -285,40 +290,85 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 
 		// The sub tree does not yet exist.  We will have to fill it.
 		sk.subTreeReady[sta] = false
+		sk.subTreeChecked[sta] = true
 		break
 	}
 
 	if !isRoot && !alreadyDone {
-		parentTreeReady, _ = sk.subTreeReady[parentSta]
+		parentTreeReady = sk.subTreeReady[parentSta] &&
+			sk.subTreeChecked[parentSta]
 	}
 	sk.mux.Unlock()
 
 	treeBuf := buf[:sk.ctx.p.BareSubTreeSize()]
 	mtDeref := merkleTreeFromBuf(treeBuf, sk.ctx.treeHeight+1, sk.ctx.p.N)
 	mt = &mtDeref
-	wotsSig = buf[sk.ctx.p.BareSubTreeSize():]
+	wotsSig = buf[sk.ctx.p.BareSubTreeSize() : sk.ctx.p.BareSubTreeSize()+int(sk.ctx.p.WotsSignatureSize())]
 
 	if alreadyDone {
-		return
+		if !justCheckTheChecksum {
+			return
+		}
+
+		// The tree seems ready, but we just need to check whether it
+		// hasn't been corrupted.
+		storedCheckSum := binary.BigEndian.Uint64(buf[len(buf)-8:])
+
+		sk.mux.Lock()
+		intact := storedCheckSum == xxhash.Sum64(buf[:len(buf)-8])
+		if intact {
+			sk.mux.Unlock()
+			return
+		}
+
+		// The tree seems corrupted.  Another thread might have reached the
+		// same conclusion, so we should check whether another thread is already
+		// correcting the problem for us.
+		if !sk.subTreeReady[sta] {
+			// There is another thread correcting the issue.  Lets wait
+			// for it.
+			log.Logf("Subtree %v is corrupted.  Another thread seems to be "+
+				"correcting the problem.  Waiting ...", sta)
+			for {
+				sk.cond.Wait()
+				if sk.subTreeReady[sta] {
+					log.Logf(" ... the subtree has been corrected.")
+					sk.mux.Unlock()
+					return
+				}
+
+				log.Logf(" ... not corrected, yet.")
+			}
+		}
+
+		// Mark the subtree not-ready
+		log.Logf("Subtree %v is corrupted.  Correcting it ...", sta)
+		sk.subTreeReady[sta] = false
+		sk.mux.Unlock()
 	}
 
 	sk.ctx.genSubTreeInto(pad, sk.skSeed, sk.ph, sta, mtDeref)
 
 	// We're not done yet.  We need to generate the WOTS+ signature
-	// and for this, possibly, a few other sub trees.
+	// (and checksum) and for this, possibly, a few other sub trees.
 
 	// Called when generating the other subtrees fails.
 	abort := func() {
 		sk.mux.Lock()
 		delete(sk.subTreeReady, sta)
+		delete(sk.subTreeChecked, sta)
 		sk.cond.Broadcast()
 		sk.mux.Unlock()
 	}
 
 	// Called when we were sucessful in the end.
 	succeed := func() {
+		binary.BigEndian.PutUint64(buf[len(buf)-8:],
+			xxhash.Sum64(buf[:len(buf)-8]))
+
 		sk.mux.Lock()
 		sk.subTreeReady[sta] = true
+		sk.subTreeChecked[sta] = true
 		sk.cond.Broadcast()
 		sk.mux.Unlock()
 	}
@@ -329,8 +379,8 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 		return
 	}
 
-	// If the parent is not cached, we'll need to cache it.  To this end
-	// we will cache all ancestors.
+	// If the parent is not cached (or checked), we'll need to cache it
+	// (or check it).  To this end we will cache all ancestors.
 	// It is strictly speaking unnecessary to generate the ancestors to
 	// sign the root of this tree: we will do it anyway, for otherwise
 	// we cannot generate the authentication path, which we'll need
@@ -469,6 +519,7 @@ func (ctx *Context) newPrivateKey(pad scratchPad, pubSeed, skSeed, skPrf []byte,
 	// Initialize helper data structures
 	ret.cond = sync.NewCond(&ret.mux)
 	ret.subTreeReady = make(map[SubTreeAddress]bool)
+	ret.subTreeChecked = make(map[SubTreeAddress]bool)
 	emptyHeap := uint32Heap([]uint32{})
 	ret.retiredSeqNos = &emptyHeap
 	heap.Init(ret.retiredSeqNos)
@@ -480,8 +531,8 @@ func (ctx *Context) newPrivateKey(pad scratchPad, pubSeed, skSeed, skPrf []byte,
 		return nil, err
 	}
 	for _, sta := range stas {
-		// TODO should we verify the validity of the cached data in the subtrees?
 		ret.subTreeReady[sta] = true
+		ret.subTreeChecked[sta] = false
 	}
 
 	// Compute (or fetch from cache) the root
@@ -539,6 +590,7 @@ func (sk *PrivateKey) incLeastSeqNoInUse() {
 			log.Logf("  failed to drop subtree %v: %v", staToDrop, err)
 		} else {
 			delete(sk.subTreeReady, staToDrop)
+			delete(sk.subTreeChecked, staToDrop)
 		}
 	}
 }
