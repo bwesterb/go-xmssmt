@@ -310,6 +310,8 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 			return
 		}
 
+		log.Logf("Checking integrity of subtree %v ...", sta)
+
 		// The tree seems ready, but we just need to check whether it
 		// hasn't been corrupted.
 		storedCheckSum := binary.BigEndian.Uint64(buf[len(buf)-8:])
@@ -317,6 +319,7 @@ func (sk *PrivateKey) getSubTree(pad scratchPad, sta SubTreeAddress) (
 		sk.mux.Lock()
 		intact := storedCheckSum == xxhash.Sum64(buf[:len(buf)-8])
 		if intact {
+			sk.subTreeChecked[sta] = true
 			sk.mux.Unlock()
 			return
 		}
