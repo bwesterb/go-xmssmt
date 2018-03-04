@@ -1,6 +1,7 @@
 package xmssmt
 
 import (
+	"bytes"
 	"encoding/hex"
 	"testing"
 )
@@ -14,8 +15,13 @@ func testHashMessage(ctx *Context, expect string, t *testing.T) {
 		R[i] = byte(2 * i)
 		root[i] = byte(i)
 	}
-	val := hex.EncodeToString(ctx.hashMessage(ctx.newScratchPad(),
-		msg, R, root, idx))
+	hVal, err := ctx.hashMessage(ctx.newScratchPad(),
+		bytes.NewReader(msg), R, root, idx)
+	if err != nil {
+		t.Errorf("%s hashMessage: %v", ctx.Name(), err)
+		return
+	}
+	val := hex.EncodeToString(hVal)
 	if val != expect {
 		t.Errorf("%s hashMessage is %s instead of %s", ctx.Name(), val, expect)
 	}

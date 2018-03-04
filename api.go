@@ -6,10 +6,12 @@ package xmssmt
 // Contains majority of the API
 
 import (
+	"bytes"
 	"container/heap"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"io"
 	"sync"
 )
 
@@ -181,8 +183,19 @@ func Verify(pk, sig, msg []byte) (bool, Error) {
 // Check whether the sig is a valid signature of this public key
 // for the given message.
 func (pk *PublicKey) Verify(sig *Signature, msg []byte) (bool, Error) {
+	return pk.VerifyFrom(sig, bytes.NewReader(msg))
+}
+
+// Reads a message from the io.Reader and verifies whether the provided
+// signature is valid for this public key and message.
+func (pk *PublicKey) VerifyFrom(sig *Signature, msg io.Reader) (bool, Error) {
 	pad := pk.ctx.newScratchPad()
-	rxMsg := pk.ctx.hashMessage(pad, msg, sig.drv, pk.root, uint64(sig.seqNo))
+	rxMsg, err := pk.ctx.hashMessage(pad, msg, sig.drv,
+		pk.root, uint64(sig.seqNo))
+	if err != nil {
+		return false, wrapErrorf(err, "Failed to hash message")
+	}
+
 	staPath, leafs := pk.ctx.subTreePathForSeqNo(sig.seqNo)
 
 	var layer uint32
@@ -477,6 +490,11 @@ func (sk *PrivateKey) BorrowedSeqNos() uint32 {
 
 // Signs the given message.
 func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
+	return sk.SignFrom(bytes.NewReader(msg))
+}
+
+// Reads a message from the io.Reader and signs it.
+func (sk *PrivateKey) SignFrom(msg io.Reader) (*Signature, Error) {
 	pad := sk.ctx.newScratchPad()
 	seqNo, err := sk.getSeqNo()
 	if err != nil {
@@ -522,7 +540,10 @@ func (sk *PrivateKey) Sign(msg []byte) (*Signature, Error) {
 		wotsSig:  make([]byte, sk.ctx.wotsSigBytes),
 	}
 
-	mhash := sk.ctx.hashMessage(pad, msg, sig.drv, sk.root, uint64(seqNo))
+	mhash, err2 := sk.ctx.hashMessage(pad, msg, sig.drv, sk.root, uint64(seqNo))
+	if err2 != nil {
+		return nil, wrapErrorf(err2, "Failed to hash message")
+	}
 	otsAddr := staPath[0].address()
 	otsAddr.setOTS(leafs[0])
 

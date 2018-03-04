@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"hash"
+	"io"
 	"reflect"
 
 	"github.com/templexxx/xor"
@@ -175,23 +176,50 @@ func (ctx *Context) prfAddrInto(pad scratchPad, addr address, key, out []byte) {
 }
 
 // Compute hash of a message and put it into out
-func (ctx *Context) hashMessage(pad scratchPad, msg, R, root []byte,
-	idx uint64) []byte {
+func (ctx *Context) hashMessage(pad scratchPad, msg io.Reader,
+	R, root []byte, idx uint64) ([]byte, error) {
 	ret := make([]byte, ctx.p.N)
-	ctx.hashMessageInto(pad, msg, R, root, idx, ret)
-	return ret
+	err := ctx.hashMessageInto(pad, msg, R, root, idx, ret)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 // Compute hash of a message and put it into out
-func (ctx *Context) hashMessageInto(pad scratchPad, msg, R, root []byte,
-	idx uint64, out []byte) {
-	buf := make([]byte, 4*int(ctx.p.N)+len(msg))
-	encodeUint64Into(HASH_PADDING_HASH, buf[:ctx.p.N])
-	copy(buf[ctx.p.N:], R)
-	copy(buf[ctx.p.N*2:], root)
-	encodeUint64Into(idx, buf[ctx.p.N*3:ctx.p.N*4])
-	copy(buf[ctx.p.N*4:], msg)
-	ctx.hashInto(pad, buf, out)
+func (ctx *Context) hashMessageInto(pad scratchPad, msg io.Reader,
+	R, root []byte, idx uint64, out []byte) error {
+
+	var h io.Writer
+	if ctx.p.Func == SHA2 {
+		if ctx.p.N == 32 {
+			h = sha256.New()
+		} else { // N == 64
+			h = sha512.New()
+		}
+	} else { // SHAKE
+		h2 := pad.hash.shake
+		h2.Reset()
+		h = h2
+	}
+
+	h.Write(encodeUint64(HASH_PADDING_HASH, int(ctx.p.N)))
+	h.Write(R)
+	h.Write(root)
+	h.Write(encodeUint64(idx, int(ctx.p.N)))
+
+	_, err := io.Copy(h, msg)
+	if err != nil {
+		return err
+	}
+
+	if ctx.p.Func == SHA2 {
+		(h.(hash.Hash)).Sum(out[:0])
+	} else { // SHAKE
+		(h.(io.Reader)).Read(out)
+	}
+
+	return nil
 }
 
 // Compute the hash f used in WOTS+
