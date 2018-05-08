@@ -332,9 +332,10 @@ func (ctr *fsContainer) writeCacheHeader() Error {
 // Returns the offset of the given cached subtree entry in the cache file.
 // This offset point to the 13-byte header just in front of the actual data.
 func (ctr *fsContainer) subTreeOffset(idx uint32) int {
-	// Find the smallest multiple of 4096 above CachedSubTreeSize() + 13,
+	// Find the smallest multiple of 4096  above CachedSubTreeSize() + 13,
 	// where 13 is the size of fsSubTreeHeader
-	paddedSize := (((ctr.params.CachedSubTreeSize() + 13) - 1) & 0xffffff000) + 4096
+	var mask uint64 = ((1 << (64 - 12)) - 1) << 12 // 0xff...ff000
+	paddedSize := (((ctr.params.CachedSubTreeSize() + 13) - 1) & int(mask)) + 4096
 	return int(idx)*paddedSize + 4096
 }
 
