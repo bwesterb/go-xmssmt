@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"github.com/bwesterb/byteswriter"
+	"github.com/edsrzf/mmap-go"
 	"github.com/hashicorp/go-multierror"
 	"github.com/nightlyone/lockfile"
 )
@@ -108,7 +108,7 @@ type fsContainer struct {
 	// maps subtree address to the index of the subtree in the cache
 	cacheIdxLut map[SubTreeAddress]uint32
 	// maps subtree address to an mmaped buffer
-	cacheBufLut  map[SubTreeAddress][]byte
+	cacheBufLut  map[SubTreeAddress]mmap.MMap
 	cacheFreeIdx *uint32Heap // list of allocated but unused subtrees
 
 }
@@ -189,7 +189,7 @@ func (ctr *fsContainer) openCache() Error {
 	var err error
 
 	ctr.cacheIdxLut = make(map[SubTreeAddress]uint32)
-	ctr.cacheBufLut = make(map[SubTreeAddress][]byte)
+	ctr.cacheBufLut = make(map[SubTreeAddress]mmap.MMap)
 	emptyHeap := uint32Heap([]uint32{})
 	ctr.cacheFreeIdx = &emptyHeap
 	heap.Init(ctr.cacheFreeIdx)
@@ -285,7 +285,7 @@ func (ctr *fsContainer) ResetCache() Error {
 	if ctr.cacheInitialized {
 		ctr.closeCache() // we ignore munmap failures
 	}
-	ctr.cacheBufLut = make(map[SubTreeAddress][]byte)
+	ctr.cacheBufLut = make(map[SubTreeAddress]mmap.MMap)
 	ctr.cacheIdxLut = make(map[SubTreeAddress]uint32)
 	ctr.allocatedSubTrees = 0
 	emptyHeap := uint32Heap([]uint32{})
@@ -340,12 +340,12 @@ func (ctr *fsContainer) subTreeOffset(idx uint32) int {
 }
 
 func (ctr *fsContainer) mmapSubTree(idx uint32) ([]byte, error) {
-	buf, err := syscall.Mmap(
-		int(ctr.cacheFile.Fd()),
-		int64(ctr.subTreeOffset(idx)),
-		ctr.params.CachedSubTreeSize()+13,
-		syscall.PROT_READ|syscall.PROT_WRITE,
-		syscall.MAP_SHARED)
+	buf, err := mmap.MapRegion(
+		ctr.cacheFile,
+		ctr.params.CachedSubTreeSize()+13, // length
+		mmap.RDWR,                         // prot
+		0,                                 // flags
+		int64(ctr.subTreeOffset(idx)))
 	return buf, err
 }
 
@@ -359,7 +359,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 	var err2 error
 
 	if buf, ok := ctr.cacheBufLut[address]; ok {
-		return buf[13:], true, nil
+		return []byte(buf)[13:], true, nil
 	}
 
 	// Check if the subtree exists
@@ -369,7 +369,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 			return nil, false, wrapErrorf(err2, "Failed to mmap subtree")
 		}
 		ctr.cacheBufLut[address] = buf
-		return buf[13:], true, nil
+		return []byte(buf)[13:], true, nil
 	}
 
 	// Find a free cached subtree index
@@ -401,7 +401,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 		Allocated: 1,
 		Address:   address,
 	}
-	bufWriter := byteswriter.NewWriter(buf)
+	bufWriter := byteswriter.NewWriter([]byte(buf))
 	err2 = binary.Write(bufWriter, binary.BigEndian, &header)
 	if err2 != nil {
 		err = wrapErrorf(err2, "Failed to write subtree header in cache")
@@ -411,7 +411,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 	ctr.cacheBufLut[address] = buf
 	ctr.cacheIdxLut[address] = idx
 
-	return buf[13:], false, nil
+	return []byte(buf)[13:], false, nil
 }
 
 func (ctr *fsContainer) ListSubTrees() ([]SubTreeAddress, Error) {
@@ -471,7 +471,7 @@ func (ctr *fsContainer) DropSubTree(address SubTreeAddress) Error {
 	delete(ctr.cacheIdxLut, address)
 	delete(ctr.cacheBufLut, address)
 
-	err2 = syscall.Munmap(buf)
+	err2 = buf.Unmap()
 	if err2 != nil {
 		return wrapErrorf(err2, "Failed to unmap sub tree")
 	}
@@ -580,20 +580,17 @@ func (ctr *fsContainer) writeKeyFile() Error {
 	// whether  the changes have been written out to disk.  We will assume that
 	// it did not, so that we won't reuse signatures.
 	dirName := filepath.Dir(ctr.path)
-	dirFd, err := syscall.Open(
-		filepath.Dir(ctr.path),
-		syscall.O_DIRECTORY,
-		syscall.O_RDWR)
+	dir, err := os.Open(dirName)
 	if err != nil {
 		return wrapErrorf(err, "failed to sync key file: open(%s):", dirName)
 	}
 
-	if err = syscall.Fsync(dirFd); err != nil {
-		syscall.Close(dirFd)
+	if err = dir.Sync(); err != nil {
+		dir.Close()
 		return wrapErrorf(err, "failed to sync key file")
 	}
 
-	if err = syscall.Close(dirFd); err != nil {
+	if err = dir.Close(); err != nil {
 		return wrapErrorf(err, "failed to sync key file (close)")
 	}
 
@@ -641,7 +638,7 @@ func (ctr *fsContainer) closeCache() (err error) {
 	ctr.cacheInitialized = false
 	if ctr.cacheBufLut != nil {
 		for _, buf := range ctr.cacheBufLut {
-			if err2 := syscall.Munmap(buf); err2 != nil {
+			if err2 := buf.Unmap(); err2 != nil {
 				err = multierror.Append(err, wrapErrorf(err2,
 					"Failed to unmap cached subtree"))
 			}
