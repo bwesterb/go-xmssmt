@@ -213,7 +213,8 @@ func (pk *PublicKey) VerifyFrom(sig *Signature, msg io.Reader) (bool, Error) {
 		var offset uint32 = leafs[layer]
 		otsAddr.setOTS(offset)
 		lTreeAddr.setLTree(offset)
-		wotsPk := pk.ctx.wotsPkFromSig(pad, rxSig.wotsSig, rxMsg, pk.ph, otsAddr)
+		wotsPk := pad.wotsBuf()
+		pk.ctx.wotsPkFromSigInto(pad, rxSig.wotsSig, rxMsg, pk.ph, otsAddr, wotsPk)
 		curHash := pk.ctx.lTree(pad, wotsPk, pk.ph, lTreeAddr)
 
 		// use the authentication path to hash up the merkle tree

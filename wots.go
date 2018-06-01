@@ -120,17 +120,24 @@ func (ctx *Context) wotsSignInto(pad scratchPad, msg []byte,
 	}
 }
 
-// Returns the public key from a message and its WOTS+ signature.
-func (ctx *Context) wotsPkFromSig(pad scratchPad, sig, msg []byte,
-	ph precomputedHashes, addr address) []byte {
+// Computes the public key from a message and its WOTS+ signature and
+// stores it in the provided buffer.
+func (ctx *Context) wotsPkFromSigInto(pad scratchPad, sig, msg []byte,
+	ph precomputedHashes, addr address, pk []byte) {
 	lengths := ctx.wotsChainLengths(msg)
-	buf := make([]byte, ctx.p.N*ctx.wotsLen)
 	var i uint32
 	for i = 0; i < ctx.wotsLen; i++ {
 		addr.setChain(uint32(i))
 		ctx.wotsGenChainInto(pad, sig[ctx.p.N*i:ctx.p.N*(i+1)],
 			uint16(lengths[i]), ctx.p.WotsW-1-uint16(lengths[i]),
-			ph, addr, buf[ctx.p.N*i:ctx.p.N*(i+1)])
+			ph, addr, pk[ctx.p.N*i:ctx.p.N*(i+1)])
 	}
-	return buf
+}
+
+// Returns the public key from a message and its WOTS+ signature.
+func (ctx *Context) wotsPkFromSig(pad scratchPad, sig, msg []byte,
+	ph precomputedHashes, addr address) []byte {
+	pk := make([]byte, ctx.p.N*ctx.wotsLen)
+	ctx.wotsPkFromSigInto(pad, sig, msg, ph, addr, pk)
+	return pk
 }

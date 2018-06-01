@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"math/rand"
 	"testing"
 )
 
@@ -117,4 +118,68 @@ func TestWotsSignThenVerify(t *testing.T) {
 	testWotSignThenVerify(NewContextFromOid(false, 4), t)
 	testWotSignThenVerify(NewContextFromOid(false, 7), t)
 	testWotSignThenVerify(NewContextFromOid(false, 10), t)
+}
+
+func BenchmarkWotsSign_SHA256_10(b *testing.B) {
+	benchmarkWotsSign(b, 1)
+}
+func BenchmarkWotsSign_SHA256_16(b *testing.B) {
+	benchmarkWotsSign(b, 2)
+}
+func BenchmarkWotsSign_SHA256_20(b *testing.B) {
+	benchmarkWotsSign(b, 3)
+}
+
+func benchmarkWotsSign(b *testing.B, oid uint32) {
+	ctx := NewContextFromOid(false, oid)
+	var pubSeed []byte = make([]byte, ctx.p.N)
+	var skSeed []byte = make([]byte, ctx.p.N)
+	var msg []byte = make([]byte, ctx.p.N)
+	var addr [8]uint32
+	for i := 0; i < int(ctx.p.N); i++ {
+		pubSeed[i] = byte(2 * i)
+		skSeed[i] = byte(i)
+		msg[i] = byte(3 * i)
+	}
+	for i := 0; i < 8; i++ {
+		addr[i] = 500000000 * uint32(i)
+	}
+	pad := ctx.newScratchPad()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		rand.Read(msg)
+		ctx.wotsSign(pad, msg, pubSeed, skSeed, address(addr))
+	}
+}
+
+func BenchmarkWotsVerify_SHA256_10(b *testing.B) {
+	benchmarkWotsVerify(b, 1)
+}
+func BenchmarkWotsVerify_SHA256_16(b *testing.B) {
+	benchmarkWotsVerify(b, 2)
+}
+func BenchmarkWotsVerify_SHA256_20(b *testing.B) {
+	benchmarkWotsVerify(b, 3)
+}
+func benchmarkWotsVerify(b *testing.B, oid uint32) {
+	ctx := NewContextFromOid(false, oid)
+	var pubSeed []byte = make([]byte, ctx.p.N)
+	var skSeed []byte = make([]byte, ctx.p.N)
+	var msg []byte = make([]byte, ctx.p.N)
+	var addr [8]uint32
+	for i := 0; i < int(ctx.p.N); i++ {
+		pubSeed[i] = byte(2 * i)
+		skSeed[i] = byte(i)
+	}
+	for i := 0; i < 8; i++ {
+		addr[i] = 500000000 * uint32(i)
+	}
+	pad := ctx.newScratchPad()
+	sig := ctx.wotsSign(pad, msg, pubSeed, skSeed, address(addr))
+	ph := ctx.precomputeHashes(pubSeed, nil)
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		rand.Read(msg)
+		ctx.wotsPkFromSigInto(pad, sig, msg, ph, address(addr), pad.wotsBuf())
+	}
 }
