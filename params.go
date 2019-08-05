@@ -1,15 +1,18 @@
+//go:generate enumer -type HashFunc
+
 package xmssmt
 
 import (
 	"encoding/binary"
+	"fmt"
 	"reflect"
 )
 
 type HashFunc uint8
 
 const (
-	SHA2  HashFunc = 0
-	SHAKE          = 1
+	SHA2 HashFunc = iota
+	SHAKE
 )
 
 // Parameters of an XMSS[MT] instance
@@ -21,6 +24,19 @@ type Params struct {
 
 	// WOTS+ Winternitz parameter.  Only 4, 16 and 256 are supported.
 	WotsW uint16
+}
+
+func (p *Params) String() string {
+	wString := ""
+	if p.WotsW != 16 {
+		wString = fmt.Sprintf(";w=%d", p.WotsW)
+	}
+	if p.D == 1 {
+		return fmt.Sprintf("XMSS-%s_%d_%d%s",
+			p.Func, p.FullHeight, p.N*8, wString)
+	}
+	return fmt.Sprintf("XMSSMT-%s_%d/%d_%d%s",
+		p.Func, p.FullHeight, p.D, p.N*8, wString)
 }
 
 // Registry of named XMSS[MT] algorithms

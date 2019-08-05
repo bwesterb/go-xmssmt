@@ -54,3 +54,16 @@ func TestBinaryUnmarshalingCustomParams(t *testing.T) {
 		testBinaryUnmarshalingCustomParams(params, t)
 	}
 }
+
+func TestParamsString(t *testing.T) {
+	for _, name := range ListNames() {
+		params := ParamsFromName(name)
+		if params == nil {
+			t.Fatalf("ParamsFromName(%s) is nil", name)
+		}
+		name2 := params.String()
+		if name != name2 {
+			t.Fatalf("ParamsFromName(%s) = %s", name, name2)
+		}
+	}
+}

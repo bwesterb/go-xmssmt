@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"sync"
 )
@@ -304,6 +305,16 @@ func (sig *Signature) WriteInto(buf []byte) error {
 		copy(buf[stOff+uint32(i)*stLen+sig.ctx.wotsSigBytes:], stSig.authPath)
 	}
 	return nil
+}
+
+// Returns the sequence number of this signature.
+func (sig *Signature) SeqNo() SignatureSeqNo {
+	return sig.seqNo
+}
+
+func (sig Signature) String() string {
+	return fmt.Sprintf("%s seqno=%d/%d",
+		sig.ctx.p, sig.seqNo, sig.ctx.p.MaxSignatureSeqNo())
 }
 
 // Initializes the Signature as stored by MarshalText.
