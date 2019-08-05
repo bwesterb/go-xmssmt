@@ -26,7 +26,7 @@ type Params struct {
 	WotsW uint16
 }
 
-func (p *Params) String() string {
+func (p Params) String() string {
 	wString := ""
 	if p.WotsW != 16 {
 		wString = fmt.Sprintf(";w=%d", p.WotsW)
