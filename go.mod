@@ -11,3 +11,5 @@ require (
 	github.com/templexxx/xor v0.0.0-20181023030647-4e92f724b73b
 	golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
 )
+
+go 1.13

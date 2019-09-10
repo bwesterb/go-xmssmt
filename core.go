@@ -112,7 +112,7 @@ func (ctx *Context) genSubTreeInto(pad scratchPad, skSeed []byte,
 			lTreeAddr.setLTree(idx)
 			otsAddr.setOTS(idx)
 			copy(mt.Node(0, idx), ctx.genLeaf(
-				pad, skSeed, ph, lTreeAddr, otsAddr))
+				pad, ph, lTreeAddr, otsAddr))
 		}
 	} else {
 		// The code in this branch does exactly the same as in
@@ -147,7 +147,6 @@ func (ctx *Context) genSubTreeInto(pad scratchPad, skSeed []byte,
 						copy(mt.Node(0, ourIdx),
 							ctx.genLeaf(
 								pad,
-								skSeed,
 								ph,
 								lTreeAddr,
 								otsAddr))
@@ -206,7 +205,7 @@ func (ctx *Context) lTree(pad scratchPad, wotsPk []byte, ph precomputedHashes,
 
 // Generate the leaf at the given address by first computing the
 // WOTS+ key pair and then using lTree.
-func (ctx *Context) genLeaf(pad scratchPad, skSeed []byte, ph precomputedHashes,
+func (ctx *Context) genLeaf(pad scratchPad, ph precomputedHashes,
 	lTreeAddr, otsAddr address) []byte {
 	pk := pad.wotsBuf()
 	ctx.wotsPkGenInto(pad, ph, otsAddr, pk)
