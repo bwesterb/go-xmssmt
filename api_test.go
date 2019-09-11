@@ -17,6 +17,7 @@ import (
 
 func TestDeriveSignVerify(t *testing.T) {
 	SetLogger(t)
+	defer SetLogger(nil)
 
 	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
 	if err != nil {
@@ -124,6 +125,7 @@ func TestDeriveSignVerify(t *testing.T) {
 
 func TestGenerateSignVerify(t *testing.T) {
 	SetLogger(t)
+	defer SetLogger(nil)
 
 	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
 	if err != nil {
@@ -187,15 +189,18 @@ func testGenerateSignVerify(params Params, t *testing.T) {
 
 func TestWotsW4(t *testing.T) {
 	SetLogger(t)
+	defer SetLogger(nil)
 	testGenerateSignVerify(Params{SHAKE, 32, 10, 5, 4}, t)
 }
 func TestWotsW256(t *testing.T) {
 	SetLogger(t)
+	defer SetLogger(nil)
 	testGenerateSignVerify(Params{SHAKE, 32, 10, 5, 4}, t)
 }
 
 func TestPrivateKeyContainer(t *testing.T) {
 	SetLogger(t)
+	defer SetLogger(nil)
 
 	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
 	if err != nil {

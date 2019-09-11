@@ -203,6 +203,7 @@ func TestSeqNoRetirement(t *testing.T) {
 		t.Skip("Skipping TestSeqNoRetirement")
 	}
 	SetLogger(t)
+	defer SetLogger(nil)
 	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
 	if err != nil {
 		t.Fatalf("TempDir: %v", err)
@@ -233,5 +234,4 @@ func TestSeqNoRetirement(t *testing.T) {
 	if err = sk.Close(); err != nil {
 		t.Fatalf("sk.Close(): %v", err)
 	}
-
 }
