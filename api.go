@@ -71,7 +71,8 @@ type PrivateKey struct {
 	retiredSeqNos *uint32Heap
 
 	mux  sync.Mutex
-	cond *sync.Cond // signalled when a subtree is generated
+	cond *sync.Cond     // signalled when a subtree is generated
+	wg   sync.WaitGroup // used to join all background workers when Close()ing
 	// subTreeReady[sta] is true if and only if the sub tree with the given
 	// address is allocated and filled.
 	subTreeReady map[SubTreeAddress]bool
@@ -582,6 +583,11 @@ func (sk *PrivateKey) Close() Error {
 	}
 	err := sk.ctr.Close()
 	sk.cond.Broadcast()
+
+	// There might be a background goroutine generating a subtree
+	// when EnableSubTreePrecomputation() was called.  So wait for that.
+	sk.wg.Wait()
+
 	return err
 }
 
@@ -812,6 +818,10 @@ func (sk *PrivateKey) EnableSubTreePrecomputation() {
 	sk.mux.Unlock()
 
 	if !nextTreeExists {
-		go sk.getSubTree(sk.ctx.newScratchPad(), nextSta)
+		sk.wg.Add(1)
+		go func() {
+			sk.getSubTree(sk.ctx.newScratchPad(), nextSta)
+			sk.wg.Done()
+		}()
 	}
 }

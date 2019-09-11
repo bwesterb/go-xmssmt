@@ -452,10 +452,12 @@ func (sk *PrivateKey) getSeqNo() (SignatureSeqNo, Error) {
 	// Check if we need to precompute a subtree
 	if sk.precomputeNextSubTree &&
 		(uint64(sk.seqNo)&((1<<sk.ctx.treeHeight)-1) == 0) {
+		sk.wg.Add(1)
 		go func(sta SubTreeAddress) {
 			log.Logf("Precomputing subtree %v", sta)
 			sk.getSubTree(sk.ctx.newScratchPad(), sta)
 			log.Logf("Finished precomputing subtree %v", sta)
+			sk.wg.Done()
 		}(SubTreeAddress{
 			Layer: 0,
 			Tree:  (uint64(sk.seqNo) >> sk.ctx.treeHeight) + 1,
