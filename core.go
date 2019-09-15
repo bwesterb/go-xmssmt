@@ -63,10 +63,10 @@ func (mt *merkleTree) Node(height, index uint32) []byte {
 
 // Returns the authentication path for the given leaf
 func (mt *merkleTree) AuthPath(leaf uint32) []byte {
-	ret := make([]byte, mt.n*mt.height)
+	ret := make([]byte, mt.n*(mt.height-1))
 	node := leaf
 	var i uint32
-	for i = 0; i < mt.height; i++ {
+	for i = 0; i < mt.height-1; i++ {
 		// node ^ 1 is the offset of the sibling of node
 		copy(ret[i*mt.n:], mt.Node(i, node^1))
 		// node / 2 is the offset of the parent of node.
