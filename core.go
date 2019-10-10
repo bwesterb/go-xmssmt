@@ -111,8 +111,7 @@ func (ctx *Context) genSubTreeInto(pad scratchPad, skSeed []byte,
 		for idx = 0; idx < (1 << ctx.treeHeight); idx++ {
 			lTreeAddr.setLTree(idx)
 			otsAddr.setOTS(idx)
-			copy(mt.Node(0, idx), ctx.genLeaf(
-				pad, ph, lTreeAddr, otsAddr))
+			ctx.genLeafInto(pad, ph, lTreeAddr, otsAddr, mt.Node(0, idx))
 		}
 	} else {
 		// The code in this branch does exactly the same as in
@@ -144,12 +143,12 @@ func (ctx *Context) genSubTreeInto(pad scratchPad, skSeed []byte,
 					for ; ourIdx < ourEnd; ourIdx++ {
 						lTreeAddr.setLTree(ourIdx)
 						otsAddr.setOTS(ourIdx)
-						copy(mt.Node(0, ourIdx),
-							ctx.genLeaf(
-								pad,
-								ph,
-								lTreeAddr,
-								otsAddr))
+						ctx.genLeafInto(
+							pad,
+							ph,
+							lTreeAddr,
+							otsAddr,
+							mt.Node(0, ourIdx))
 					}
 				}
 				wg.Done()
@@ -172,10 +171,10 @@ func (ctx *Context) genSubTreeInto(pad scratchPad, skSeed []byte,
 	}
 }
 
-// Computes the leaf node associated to a WOTS+ public key.
+// Computes the leaf node associated to a WOTS+ public key and writes it to out.
 // Note that the WOTS+ public key is destroyed.
-func (ctx *Context) lTree(pad scratchPad, wotsPk []byte, ph precomputedHashes,
-	addr address) []byte {
+func (ctx *Context) lTreeInto(pad scratchPad, wotsPk []byte, ph precomputedHashes,
+	addr address, out []byte) {
 	var height uint32 = 0
 	var l uint32 = ctx.wotsLen
 	for l > 1 {
@@ -198,18 +197,16 @@ func (ctx *Context) lTree(pad scratchPad, wotsPk []byte, ph precomputedHashes,
 		}
 		height++
 	}
-	ret := make([]byte, ctx.p.N)
-	copy(ret, wotsPk[:ctx.p.N])
-	return ret
+	copy(out, wotsPk[:ctx.p.N])
 }
 
 // Generate the leaf at the given address by first computing the
 // WOTS+ key pair and then using lTree.
-func (ctx *Context) genLeaf(pad scratchPad, ph precomputedHashes,
-	lTreeAddr, otsAddr address) []byte {
+func (ctx *Context) genLeafInto(pad scratchPad, ph precomputedHashes,
+	lTreeAddr, otsAddr address, out []byte) {
 	pk := pad.wotsBuf()
 	ctx.wotsPkGenInto(pad, ph, otsAddr, pk)
-	return ctx.lTree(pad, pk, ph, lTreeAddr)
+	ctx.lTreeInto(pad, pk, ph, lTreeAddr, out)
 }
 
 // Derive the seed for the WOTS+ key pair at the given address

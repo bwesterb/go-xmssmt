@@ -11,6 +11,7 @@ import (
 func testLTree(ctx *Context, expect string, t *testing.T) {
 	var pk []byte = make([]byte, ctx.p.N*ctx.wotsLen)
 	var pubSeed []byte = make([]byte, ctx.p.N)
+	var out []byte = make([]byte, ctx.p.N)
 	var addr [8]uint32
 	for i := 0; i < len(pk); i++ {
 		pk[i] = byte(i)
@@ -21,8 +22,9 @@ func testLTree(ctx *Context, expect string, t *testing.T) {
 	for i := 0; i < 8; i++ {
 		addr[i] = 500000000 * uint32(i)
 	}
-	val := hex.EncodeToString(ctx.lTree(ctx.newScratchPad(), pk,
-		ctx.precomputeHashes(pubSeed, nil), address(addr)))
+	ctx.lTreeInto(ctx.newScratchPad(), pk, ctx.precomputeHashes(pubSeed, nil),
+		address(addr), out)
+	val := hex.EncodeToString(out)
 	if val != expect {
 		t.Errorf("%s ltree returned %s instead of %s", ctx.Name(), val, expect)
 	}
@@ -61,6 +63,7 @@ func TestGetWotsSeed(t *testing.T) {
 func testGenLeaf(ctx *Context, expect string, t *testing.T) {
 	var skSeed []byte = make([]byte, ctx.p.N)
 	var pubSeed []byte = make([]byte, ctx.p.N)
+	var out []byte = make([]byte, ctx.p.N)
 	var lTreeAddr, otsAddr [8]uint32
 	for i := 0; i < int(ctx.p.N); i++ {
 		skSeed[i] = byte(i)
@@ -70,8 +73,9 @@ func testGenLeaf(ctx *Context, expect string, t *testing.T) {
 		otsAddr[i] = 500000000 * uint32(i)
 		lTreeAddr[i] = 400000000 * uint32(i)
 	}
-	val := hex.EncodeToString(ctx.genLeaf(ctx.newScratchPad(),
-		ctx.precomputeHashes(pubSeed, skSeed), lTreeAddr, otsAddr))
+	ctx.genLeafInto(ctx.newScratchPad(), ctx.precomputeHashes(pubSeed, skSeed),
+		lTreeAddr, otsAddr, out)
+	val := hex.EncodeToString(out)
 	if val != expect {
 		t.Errorf("%s genLeaf returned %s instead of %s", ctx.Name(), val, expect)
 	}
@@ -190,11 +194,12 @@ func BenchmarkGenLeafSHAKE_512(b *testing.B) {
 func benchmarkGenLeaf(ctx *Context, b *testing.B) {
 	skSeed := make([]byte, ctx.p.N)
 	pubSeed := make([]byte, ctx.p.N)
+	out := make([]byte, ctx.p.N)
 	var lTreeAddr, otsAddr address
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ctx.genLeaf(ctx.newScratchPad(),
-			ctx.precomputeHashes(pubSeed, skSeed), lTreeAddr, otsAddr)
+		ctx.genLeafInto(ctx.newScratchPad(),
+			ctx.precomputeHashes(pubSeed, skSeed), lTreeAddr, otsAddr, out)
 	}
 }
 

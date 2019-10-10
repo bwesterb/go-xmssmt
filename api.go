@@ -192,6 +192,8 @@ func (pk *PublicKey) Verify(sig *Signature, msg []byte) (bool, Error) {
 // signature is valid for this public key and message.
 func (pk *PublicKey) VerifyFrom(sig *Signature, msg io.Reader) (bool, Error) {
 	pad := pk.ctx.newScratchPad()
+	curHash := make([]byte, sig.ctx.p.N)
+
 	rxMsg, err := pk.ctx.hashMessage(pad, msg, sig.drv,
 		pk.root, uint64(sig.seqNo))
 	if err != nil {
@@ -217,7 +219,7 @@ func (pk *PublicKey) VerifyFrom(sig *Signature, msg io.Reader) (bool, Error) {
 		lTreeAddr.setLTree(offset)
 		wotsPk := pad.wotsBuf()
 		pk.ctx.wotsPkFromSigInto(pad, rxSig.wotsSig, rxMsg, pk.ph, otsAddr, wotsPk)
-		curHash := pk.ctx.lTree(pad, wotsPk, pk.ph, lTreeAddr)
+		pk.ctx.lTreeInto(pad, wotsPk, pk.ph, lTreeAddr, curHash)
 
 		// use the authentication path to hash up the merkle tree
 		var height uint32
