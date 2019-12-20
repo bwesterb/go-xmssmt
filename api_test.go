@@ -166,6 +166,8 @@ func testSignThenVerify(sk *PrivateKey, pk *PublicKey, t *testing.T) {
 }
 
 func testGenerateSignVerify(params Params, t *testing.T) {
+	SetLogger(t)
+	defer SetLogger(nil)
 	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
 	if err != nil {
 		t.Fatalf("TempDir: %v", err)
@@ -188,14 +190,19 @@ func testGenerateSignVerify(params Params, t *testing.T) {
 }
 
 func TestWotsW4(t *testing.T) {
-	SetLogger(t)
-	defer SetLogger(nil)
+	testGenerateSignVerify(Params{SHAKE, 16, 10, 5, 4}, t)
 	testGenerateSignVerify(Params{SHAKE, 32, 10, 5, 4}, t)
+	testGenerateSignVerify(Params{SHAKE, 64, 10, 5, 4}, t)
+}
+func TestWotsW16(t *testing.T) {
+	testGenerateSignVerify(Params{SHAKE, 16, 10, 5, 16}, t)
+	testGenerateSignVerify(Params{SHAKE, 32, 10, 5, 16}, t)
+	testGenerateSignVerify(Params{SHAKE, 64, 10, 5, 16}, t)
 }
 func TestWotsW256(t *testing.T) {
-	SetLogger(t)
-	defer SetLogger(nil)
-	testGenerateSignVerify(Params{SHAKE, 32, 10, 5, 4}, t)
+	testGenerateSignVerify(Params{SHAKE, 16, 10, 5, 256}, t)
+	testGenerateSignVerify(Params{SHAKE, 32, 10, 5, 256}, t)
+	testGenerateSignVerify(Params{SHAKE, 64, 10, 5, 256}, t)
 }
 
 func TestPrivateKeyContainer(t *testing.T) {

@@ -57,3 +57,10 @@ func main() {
 
 See [godoc](https://godoc.org/github.com/bwesterb/go-xmssmt) for
 further documentation of the API.
+
+Changes
+-------
+
+###  1.1.0 (20-12-2019)
+
+- Add support for security parameter N=16.

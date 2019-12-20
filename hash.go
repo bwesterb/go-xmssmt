@@ -44,10 +44,11 @@ func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
 	ph precomputedHashes) {
 	if ctx.p.Func == SHA2 {
 		var hPrfSk, hPrfPub hash.Hash
-		if ctx.p.N == 32 {
+		switch ctx.p.N {
+		case 16, 32:
 			hPrfSk = sha256.New()
 			hPrfPub = sha256.New()
-		} else { // N == 64
+		case 64:
 			hPrfSk = sha512.New()
 			hPrfPub = sha512.New()
 		}
@@ -128,10 +129,14 @@ func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
 // Compute the hash of in.  out must be a n-byte slice.
 func (ctx *Context) hashInto(pad scratchPad, in, out []byte) {
 	if ctx.p.Func == SHA2 {
-		if ctx.p.N == 32 {
+		switch ctx.p.N {
+		case 16:
+			ret := sha256.Sum256(in)
+			copy(out, ret[:16])
+		case 32:
 			ret := sha256.Sum256(in)
 			copy(out, ret[:])
-		} else { // N == 64
+		case 64:
 			ret := sha512.Sum512(in)
 			copy(out, ret[:])
 		}
@@ -192,9 +197,10 @@ func (ctx *Context) hashMessageInto(pad scratchPad, msg io.Reader,
 
 	var h io.Writer
 	if ctx.p.Func == SHA2 {
-		if ctx.p.N == 32 {
+		switch ctx.p.N {
+		case 16, 32:
 			h = sha256.New()
-		} else { // N == 64
+		case 64:
 			h = sha512.New()
 		}
 	} else { // SHAKE
@@ -269,16 +275,18 @@ func (ctx *Context) hInto(pad scratchPad, left, right []byte,
 
 func (ctx *Context) newHashScratchPad() (pad hashScratchPad) {
 	if ctx.p.Func == SHA2 {
-		if ctx.p.N == 32 {
+		switch ctx.p.N {
+		case 16, 32:
 			pad.h = sha256.New()
-		} else {
+		case 64:
 			pad.h = sha512.New()
 		}
 		pad.hV = reflect.ValueOf(pad.h).Elem()
 	} else { // SHAKE
-		if ctx.p.N == 32 {
+		switch ctx.p.N {
+		case 16, 32:
 			pad.shake = sha3.NewShake128()
-		} else {
+		case 64:
 			pad.shake = sha3.NewShake256()
 		}
 	}
