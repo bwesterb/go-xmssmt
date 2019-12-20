@@ -118,6 +118,19 @@ func TestWotsSignThenVerify(t *testing.T) {
 	testWotSignThenVerify(NewContextFromOid(false, 4), t)
 	testWotSignThenVerify(NewContextFromOid(false, 7), t)
 	testWotSignThenVerify(NewContextFromOid(false, 10), t)
+
+	ctx, _ := NewContext(Params{Func: SHA2, N: 16, WotsW: 256, FullHeight: 1, D: 1})
+	testWotSignThenVerify(ctx, t)
+	ctx, _ = NewContext(Params{Func: SHA2, N: 16, WotsW: 16, FullHeight: 1, D: 1})
+	testWotSignThenVerify(ctx, t)
+	ctx, _ = NewContext(Params{Func: SHA2, N: 16, WotsW: 4, FullHeight: 1, D: 1})
+	testWotSignThenVerify(ctx, t)
+	ctx, _ = NewContext(Params{Func: SHAKE, N: 16, WotsW: 256, FullHeight: 1, D: 1})
+	testWotSignThenVerify(ctx, t)
+	ctx, _ = NewContext(Params{Func: SHAKE, N: 16, WotsW: 16, FullHeight: 1, D: 1})
+	testWotSignThenVerify(ctx, t)
+	ctx, _ = NewContext(Params{Func: SHAKE, N: 16, WotsW: 4, FullHeight: 1, D: 1})
+	testWotSignThenVerify(ctx, t)
 }
 
 func BenchmarkWotsSign_SHA256_10(b *testing.B) {

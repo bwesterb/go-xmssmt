@@ -633,8 +633,12 @@ func NewContext(params Params) (ctx *Context, err Error) {
 	ctx.p = params
 	ctx.mt = (ctx.p.D > 1)
 
-	if ctx.p.N != 32 && ctx.p.N != 64 {
-		return nil, errorf("Only N=32,64 are supported")
+	if ctx.p.N != 16 && ctx.p.N != 32 && ctx.p.N != 64 {
+		return nil, errorf("Only N=16,32,64 are supported")
+	}
+
+	if params.D == 0 {
+		return nil, errorf("D can't be zero")
 	}
 
 	if params.FullHeight%params.D != 0 {
