@@ -133,18 +133,33 @@ func TestWotsSignThenVerify(t *testing.T) {
 	testWotSignThenVerify(ctx, t)
 }
 
-func BenchmarkWotsSign_SHA256_10(b *testing.B) {
-	benchmarkWotsSign(b, 1)
+func BenchmarkWotsSign_SHA256_10_w16(b *testing.B) {
+	benchmarkWotsSign(b, 10, 16)
 }
-func BenchmarkWotsSign_SHA256_16(b *testing.B) {
-	benchmarkWotsSign(b, 2)
+func BenchmarkWotsSign_SHA256_16_w16(b *testing.B) {
+	benchmarkWotsSign(b, 16, 16)
 }
-func BenchmarkWotsSign_SHA256_20(b *testing.B) {
-	benchmarkWotsSign(b, 3)
+func BenchmarkWotsSign_SHA256_20_w16(b *testing.B) {
+	benchmarkWotsSign(b, 20, 16)
+}
+func BenchmarkWotsSign_SHA256_10_w256(b *testing.B) {
+	benchmarkWotsSign(b, 10, 256)
+}
+func BenchmarkWotsSign_SHA256_16_w256(b *testing.B) {
+	benchmarkWotsSign(b, 16, 256)
+}
+func BenchmarkWotsSign_SHA256_20_w256(b *testing.B) {
+	benchmarkWotsSign(b, 20, 256)
 }
 
-func benchmarkWotsSign(b *testing.B, oid uint32) {
-	ctx := NewContextFromOid(false, oid)
+func benchmarkWotsSign(b *testing.B, H uint32, WotsW uint16) {
+	ctx, _ := NewContext(Params{
+		Func:       SHA2,
+		N:          32,
+		FullHeight: H,
+		D:          1,
+		WotsW:      WotsW,
+	})
 	var pubSeed []byte = make([]byte, ctx.p.N)
 	var skSeed []byte = make([]byte, ctx.p.N)
 	var msg []byte = make([]byte, ctx.p.N)
