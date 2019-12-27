@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"reflect"
+	"strconv"
+	"strings"
 )
 
 type HashFunc uint8
@@ -29,7 +31,7 @@ type Params struct {
 func (p Params) String() string {
 	wString := ""
 	if p.WotsW != 16 {
-		wString = fmt.Sprintf(";w=%d", p.WotsW)
+		wString = fmt.Sprintf("_w%d", p.WotsW)
 	}
 	if p.D == 1 {
 		return fmt.Sprintf("XMSS-%s_%d_%d%s",
@@ -213,8 +215,8 @@ type regEntry struct {
 	params Params // parameters of the algorithm
 }
 
-// Returns paramters for the named XMSS[MT] instance (and nil if there is no
-// such algorithm).
+// Returns parameters for a named XMSS[MT] instance (and nil if there is no
+// such algorithm listed in the RFC.)
 func ParamsFromName(name string) *Params {
 	entry, ok := registryNameLut[name]
 	if ok {
@@ -224,11 +226,149 @@ func ParamsFromName(name string) *Params {
 	}
 }
 
-// List all named XMSS[MT] instances
+// Returns parameters for a XMSS[MT] instance (which might not be listed in
+// the RFC.)
+func ParamsFromName2(name string) (*Params, Error) {
+	ret := ParamsFromName(name)
+	if ret != nil {
+		return ret, nil
+	}
+	return parseParamsFromName(name)
+}
+
+func parseParamsFromName(name string) (*Params, Error) {
+	var ret Params
+	var mt bool
+	var err error
+
+	bits := strings.SplitN(name, "-", 2)
+	if len(bits) != 2 {
+		return nil, errorf("Missing seperator between alg and params")
+	}
+	switch bits[0] {
+	case "XMSS":
+		mt = false
+	case "XMSSMT":
+		mt = true
+	default:
+		return nil, errorf("No such algorithm: %s", bits[0])
+	}
+
+	bits = strings.Split(bits[1], "_")
+	switch bits[0] {
+	case "SHA2":
+		ret.Func = SHA2
+	case "SHAKE":
+		ret.Func = SHAKE
+	default:
+		return nil, errorf("No such hash function: %s", bits[0])
+	}
+
+	if len(bits) < 3 || len(bits) > 4 {
+		return nil, errorf("Expected three or four parameters, not %d",
+			len(bits))
+	}
+
+	var unparsedFh string
+	if strings.Contains(bits[1], "/") {
+		if !mt {
+			return nil, errorf("Can't have D parameter for XMSS")
+		}
+		fh_d := strings.SplitN(bits[1], "/", 2)
+		unparsedFh = fh_d[0]
+		d, err := strconv.Atoi(fh_d[1])
+		if err != nil {
+			return nil, wrapErrorf(err, "Can't parse D")
+		}
+		if d < 0 || d >= 1<<32 {
+			return nil, errorf("D out of bounds")
+		}
+		ret.D = uint32(d)
+	} else {
+		if mt {
+			return nil, errorf("Missing D parameter")
+		}
+		unparsedFh = bits[1]
+		ret.D = 1
+	}
+
+	fh, err := strconv.Atoi(unparsedFh)
+	if err != nil {
+		return nil, wrapErrorf(err, "Can't parse FullHeight")
+	}
+	if fh < 0 || fh >= 1<<32 {
+		return nil, errorf("FullHeight out of bounds")
+	}
+	ret.FullHeight = uint32(fh)
+
+	n, err := strconv.Atoi(bits[2])
+	if err != nil {
+		return nil, wrapErrorf(err, "parse N")
+	}
+	if n < 0 || n > 1<<32 {
+		return nil, errorf("N out of bounds")
+	}
+	ret.N = uint32(n) / 8
+
+	if len(bits) >= 4 {
+		if len(bits[3]) < 2 {
+			return nil, errorf("Fourth parameter is too short")
+		}
+		if bits[3][0] != 'w' {
+			return nil, errorf("Expected 'w' for fourth parameter")
+		}
+		w, err := strconv.Atoi(bits[3][1:])
+		if err != nil {
+			return nil, wrapErrorf(err, "Failed to parse WotsW parameter")
+		}
+		if w < 0 || w >= 1<<16 {
+			return nil, errorf("WotsW out of bounds")
+		}
+		ret.WotsW = uint16(w)
+	} else {
+		ret.WotsW = 16
+	}
+
+	return &ret, nil
+}
+
+// List all named XMSS[MT] instances from RFC8391.
 func ListNames() (names []string) {
 	names = make([]string, len(registry))
 	for i, entry := range registry {
 		names[i] = entry.name
+	}
+	return
+}
+
+// List names of supported and useful XMSS[MT] instances (that might not be
+// named in RFC8391 and thus might not be supported by other implementations.)
+func ListNames2() (names []string) {
+	var p Params
+	add := func(fh, d uint32) {
+		p.FullHeight = fh
+		p.D = d
+		names = append(names, p.String())
+	}
+	for _, h := range []HashFunc{SHA2, SHAKE} {
+		for _, w := range []uint16{4, 16, 256} {
+			for _, n := range []uint32{16, 32, 64} {
+				p.Func = h
+				p.WotsW = w
+				p.N = n
+				add(20, 2)
+				add(20, 4)
+				add(40, 2)
+				add(40, 4)
+				add(40, 8)
+				add(60, 3)
+				add(60, 6)
+				add(60, 12)
+				add(10, 1)
+				add(16, 1)
+				add(20, 1)
+			}
+		}
 	}
 	return
 }
@@ -319,6 +459,13 @@ func (ctx *Context) Name() string {
 func (ctx *Context) Oid() uint32 {
 	ctx.ensureNameAndOidAreSet()
 	return ctx.oid
+}
+
+// Returns whether this XMSS[MT] instance is listed in the RFC (and thus should
+// also be supported by other implementations).
+func (ctx *Context) FromRFC() bool {
+	ctx.ensureNameAndOidAreSet()
+	return ctx.oid != 0
 }
 
 // Returns whether this is an XMSSMT instance (as opposed to XMSS)

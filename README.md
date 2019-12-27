@@ -58,9 +58,24 @@ func main() {
 See [godoc](https://godoc.org/github.com/bwesterb/go-xmssmt) for
 further documentation of the API.
 
+Note on compatibility
+---------------------
+
+`go-xmssmt` supports instances of XMSS[MT] that are (currently) not listed
+in the RFC and so might not be supported by other implementations, such
+as `XMSSMT-SHA2_20/4_128_w256`.  `go-xmssmt` encodes the parameters of these
+non-standard instances in the reserved space of Oid numbers,
+see [`Params.MarshalBinary()`](https://godoc.org/github.com/bwesterb/go-xmssmt#Params.MarshalBinary).
+For maximum compatibility, one can check whether the instance is supported
+by the RFC by checking `Context.FromRFC()`.
+
 Changes
 -------
 
-###  1.1.0 (20-12-2019)
+### 1.2.0 (27-12-2019)
+
+- Add support for instance names not listed in RFC.
+
+### 1.1.0 (20-12-2019)
 
 - Add support for security parameter N=16.

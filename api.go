@@ -1,6 +1,5 @@
 // Go implementation of the XMSS[MT] post-quantum stateful hash-based signature
-// scheme as described in the RFC draft
-// https://datatracker.ietf.org/doc/draft-irtf-cfrg-xmss-hash-based-signatures/
+// scheme as described in RFC 8391.
 package xmssmt
 
 // Contains majority of the API
@@ -17,7 +16,7 @@ import (
 )
 
 // XMSS[MT] instance.
-// Create one using NewContextFromName, NewContextFromOid or NewContext.
+// Create one using NewContextFromName[2], NewContextFromOid or NewContext.
 type Context struct {
 	// Number of worker goroutines ("threads") to use for expensive operations.
 	// Will guess an appropriate number if set to 0.
@@ -126,16 +125,18 @@ type Error interface {
 // the private key and the  second contains sensitive cached information
 // derived from the private key used to increase signing performance a lot.
 //
-// Use ListNames() to list the supported instances of XMSS[MT].
+// Use ListNames() to list the supported instances of XMSS[MT] from the RFC.
+// This library supports more instances than those listed in the RFC.
+// To check whether an instance is supported by the RFC, use Context.FromRFC().
 //
-// For more flexibility use NewContextFromName() to create a Context and
+// For more flexibility use NewContextFromName[2]() to create a Context and
 // then call Context.GenerateKeyPair() or Context.DeriveInto().
 //
 // NOTE Do not forget to Close() the PrivateKey.
 func GenerateKeyPair(alg, privKeyPath string) (*PrivateKey, *PublicKey, Error) {
-	ctx := NewContextFromName(alg)
-	if ctx == nil {
-		return nil, nil, errorf("%s is not a valid algorithm name", alg)
+	ctx, err := NewContextFromName2(alg)
+	if err != nil {
+		return nil, nil, wrapErrorf(err, "%s is not a valid algorithm name", alg)
 	}
 	return ctx.GenerateKeyPair(privKeyPath)
 }
@@ -613,7 +614,21 @@ func NewContextFromOid(mt bool, oid uint32) *Context {
 	}
 }
 
-// Return new context for the given XMSS[MT] algorithm name (and nil if the
+// Return new context for the given XMSS[MT] instance, which might not
+// be listed in the RFC.
+func NewContextFromName2(name string) (*Context, Error) {
+	ctx := NewContextFromName(name)
+	if ctx != nil {
+		return ctx, nil
+	}
+	params, err := ParamsFromName2(name)
+	if err != nil {
+		return nil, err
+	}
+	return NewContext(*params)
+}
+
+// Return new context for the given named XMSS[MT] instance (and nil if the
 // algorithm name is unknown).
 func NewContextFromName(name string) *Context {
 	entry, ok := registryNameLut[name]

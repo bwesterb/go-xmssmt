@@ -67,3 +67,16 @@ func TestParamsString(t *testing.T) {
 		}
 	}
 }
+
+func TestParseParams(t *testing.T) {
+	for _, name := range ListNames() {
+		params := ParamsFromName(name)
+		params2, err := parseParamsFromName(name)
+		if err != nil {
+			t.Fatalf("Failed to parse %s: %v", name, err)
+		}
+		if *params != *params2 {
+			t.Fatalf("Parsed %s as %v instead of %v", name, params2, params)
+		}
+	}
+}
