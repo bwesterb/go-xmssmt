@@ -15,7 +15,7 @@ import (
 
 func main() {
     // Create a new keypair.  See ListNames().
-    sk, pk, err := xmssmt.GenerateKeyPair("XMSSMT-SHA2_20/4_256", "key")
+    sk, pk, err := xmssmt.GenerateKeyPair("XMSSMT-SHAKE_20/4_256", "key")
     if err != nil {
         panic(err)
     }
@@ -63,7 +63,7 @@ Note on compatibility
 
 `go-xmssmt` supports instances of XMSS[MT] that are (currently) not listed
 in the RFC and so might not be supported by other implementations, such
-as `XMSSMT-SHA2_20/4_128_w256`.  `go-xmssmt` encodes the parameters of these
+as `XMSSMT-SHAKE_20/4_128_w256`.  `go-xmssmt` encodes the parameters of these
 non-standard instances in the reserved space of Oid numbers,
 see [`Params.MarshalBinary()`](https://godoc.org/github.com/bwesterb/go-xmssmt#Params.MarshalBinary).
 For maximum compatibility, one can check whether the instance is supported
@@ -71,6 +71,11 @@ by the RFC by checking `Context.FromRFC()`.
 
 Changes
 -------
+
+### 1.3.0 (unreleased)
+
+- When available, use AVX2 to compute SHAKE fourway.  This makes SHAKE
+  faster than SHA2.
 
 ### 1.2.0 (27-12-2019)
 

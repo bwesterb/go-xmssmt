@@ -1,18 +1,38 @@
 package xmssmt
 
+import (
+	"sort"
+)
+
 // The Winternitz One-Time Signature scheme as used by XMSS[MT].
 
 // Generate WOTS+ secret key
 func (ctx *Context) genWotsSk(pad scratchPad, ph precomputedHashes,
 	addr address, out []byte) {
-	var i uint32
+	n := ctx.p.N
 	addr.setChain(0)
 	addr.setHash(0)
 	addr.setKeyAndMask(0)
 	buf := pad.wotsSkSeedBuf()
 	ph.prfAddrSkSeedInto(pad, addr, buf)
-	for i = 0; i < ctx.wotsLen; i++ {
-		ctx.prfUint64Into(pad, uint64(i), buf, out[i*ctx.p.N:])
+
+	if !ctx.x4Available {
+		// Unvectorized
+		for i := uint32(0); i < ctx.wotsLen; i++ {
+			ctx.prfUint64Into(pad, uint64(i), buf, out[i*ctx.p.N:])
+		}
+		return
+	}
+
+	// Fourway vectorized
+	for i := uint32(0); i < ctx.wotsLen; i += 4 {
+		var bufs [4][]byte
+		for j := uint32(0); j < 4 && i+j < ctx.wotsLen; j++ {
+			bufs[j] = out[n*(i+j) : n*(i+j+1)]
+		}
+		ctx.prfUint64X4Into(pad,
+			[4]uint64{uint64(i), uint64(i + 1), uint64(i + 2), uint64(i + 3)},
+			buf, bufs)
 	}
 }
 
@@ -89,12 +109,33 @@ func (ctx *Context) wotsPkGen(pad scratchPad, ph precomputedHashes,
 func (ctx *Context) wotsPkGenInto(pad scratchPad, ph precomputedHashes,
 	addr address, out []byte) {
 	ctx.genWotsSk(pad, ph, addr, out)
-	var i uint32
-	for i = 0; i < ctx.wotsLen; i++ {
-		addr.setChain(uint32(i))
-		ctx.wotsGenChainInto(pad, out[ctx.p.N*i:ctx.p.N*(i+1)],
-			0, ctx.p.WotsW-1, ph, addr,
-			out[ctx.p.N*i:ctx.p.N*(i+1)])
+	n := ctx.p.N
+
+	if !ctx.x4Available {
+		// Unvectorized
+		for i := uint32(0); i < ctx.wotsLen; i++ {
+			addr.setChain(uint32(i))
+			ctx.wotsGenChainInto(pad, out[n*i:n*(i+1)],
+				0, ctx.p.WotsW-1, ph, addr,
+				out[n*i:n*(i+1)])
+		}
+		return
+	}
+
+	// Fourway vectorized
+	addrs := [4]address{addr, addr, addr, addr}
+	for i := uint32(0); i < ctx.wotsLen; i += 4 {
+		var bufs [4][]byte
+		for j := uint32(0); j < 4 && i+j < ctx.wotsLen; j++ {
+			addrs[j].setChain(uint32(i + j))
+			bufs[j] = out[n*(i+j) : n*(i+j+1)]
+		}
+		for k := uint16(0); k < ctx.p.WotsW-1; k++ {
+			for j := 0; j < 4; j++ {
+				addrs[j].setHash(uint32(k))
+			}
+			ctx.fX4Into(pad, bufs, ph.pubSeed, addrs, bufs)
+		}
 	}
 }
 
@@ -111,12 +152,88 @@ func (ctx *Context) wotsSignInto(pad scratchPad, msg []byte,
 	ph precomputedHashes, addr address, wotsSig []byte) {
 	lengths := ctx.wotsChainLengths(msg)
 	ctx.genWotsSk(pad, ph, addr, wotsSig)
-	var i uint32
-	for i = 0; i < ctx.wotsLen; i++ {
-		addr.setChain(uint32(i))
-		ctx.wotsGenChainInto(pad, wotsSig[ctx.p.N*i:ctx.p.N*(i+1)],
-			0, uint16(lengths[i]), ph, addr,
-			wotsSig[ctx.p.N*i:ctx.p.N*(i+1)])
+	n := ctx.p.N
+
+	if !ctx.x4Available {
+		// Unvectorized
+		for i := uint32(0); i < ctx.wotsLen; i++ {
+			addr.setChain(uint32(i))
+			ctx.wotsGenChainInto(pad, wotsSig[n*i:n*(i+1)],
+				0, uint16(lengths[i]), ph, addr,
+				wotsSig[n*i:n*(i+1)])
+		}
+		return
+	}
+
+	// Fourway vectorized
+	steps := make([]uint16, ctx.wotsLen)
+	for i := uint32(0); i < ctx.wotsLen; i++ {
+		steps[i] = uint16(lengths[i])
+	}
+	ctx.wotsGenChainsX4Into(pad, wotsSig, make([]uint16, ctx.wotsLen),
+		steps, ph, addr, wotsSig)
+}
+
+// Compute the (start + steps)th value in the WOTS+ chain, given
+// the start'th value in the chain.
+func (ctx *Context) wotsGenChainsX4Into(pad scratchPad, in []byte,
+	start []uint16, steps []uint16, ph precomputedHashes,
+	addr address, out []byte) {
+	n := ctx.p.N
+	copy(out[:ctx.wotsLen*n], in)
+
+	// We group chains by their length
+	chains := make([]struct {
+		start uint16
+		steps uint16
+		idx   uint32
+	}, ctx.wotsLen)
+	for i := uint32(0); i < ctx.wotsLen; i++ {
+		chains[i].start = start[i]
+		chains[i].steps = steps[i]
+		chains[i].idx = i
+	}
+
+	// Note that we sort by reverse order so that the last chains that are
+	// left over when wotsLen is not divisable by four are short.
+	sort.Slice(chains, func(i, j int) bool {
+		return chains[i].steps > chains[j].steps
+	})
+
+	// Now we know what to do, do it.
+	addrs := [4]address{addr, addr, addr, addr}
+	for i := uint32(0); i < ctx.wotsLen; i += 4 {
+		var bufs [4][]byte
+		for j := uint32(0); j < 4 && i+j < ctx.wotsLen; j++ {
+			idx := chains[i+j].idx
+			addrs[j].setChain(idx)
+			bufs[j] = out[n*idx : n*(idx+1)]
+		}
+
+		// As we reverse sorted the chains, we know the first is longest and
+		// the last is shortest.
+		watching := uint32(3) // we're watching the shortest initially
+		for i+watching >= ctx.wotsLen {
+			watching--
+		}
+		done := false
+		for k := uint16(0); ; k++ {
+			for k == chains[i+watching].steps {
+				bufs[watching] = nil
+				if watching == 0 {
+					done = true
+					break
+				}
+				watching--
+			}
+			if done {
+				break
+			}
+			for j := uint32(0); j < watching+1; j++ {
+				addrs[j].setHash(uint32(k + chains[i+j].start))
+			}
+			ctx.fX4Into(pad, bufs, ph.pubSeed, addrs, bufs)
+		}
 	}
 }
 
@@ -125,13 +242,27 @@ func (ctx *Context) wotsSignInto(pad scratchPad, msg []byte,
 func (ctx *Context) wotsPkFromSigInto(pad scratchPad, sig, msg []byte,
 	ph precomputedHashes, addr address, pk []byte) {
 	lengths := ctx.wotsChainLengths(msg)
-	var i uint32
-	for i = 0; i < ctx.wotsLen; i++ {
-		addr.setChain(uint32(i))
-		ctx.wotsGenChainInto(pad, sig[ctx.p.N*i:ctx.p.N*(i+1)],
-			uint16(lengths[i]), ctx.p.WotsW-1-uint16(lengths[i]),
-			ph, addr, pk[ctx.p.N*i:ctx.p.N*(i+1)])
+	n := ctx.p.N
+
+	if !ctx.x4Available {
+		// Unvectorized
+		for i := uint32(0); i < ctx.wotsLen; i++ {
+			addr.setChain(uint32(i))
+			ctx.wotsGenChainInto(pad, sig[n*i:n*(i+1)],
+				uint16(lengths[i]), ctx.p.WotsW-1-uint16(lengths[i]),
+				ph, addr, pk[n*i:n*(i+1)])
+		}
+		return
 	}
+
+	// Fourway vectorized
+	steps := make([]uint16, ctx.wotsLen)
+	start := make([]uint16, ctx.wotsLen)
+	for i := uint32(0); i < ctx.wotsLen; i++ {
+		steps[i] = ctx.p.WotsW - 1 - uint16(lengths[i])
+		start[i] = uint16(lengths[i])
+	}
+	ctx.wotsGenChainsX4Into(pad, sig, start, steps, ph, addr, pk)
 }
 
 // Returns the public key from a message and its WOTS+ signature.

@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/bwesterb/go-xmssmt/internal/f1600x4"
 )
 
 // XMSS[MT] instance.
@@ -33,6 +35,8 @@ type Context struct {
 	sigBytes     uint32 // size of signature
 	pkBytes      uint32 // size of public key
 	skBytes      uint32 // size of secret key
+
+	x4Available bool // whether fourway hashes are available
 
 	mt   bool    // true for XMSSMT; false for XMSS
 	oid  uint32  // OID of this configuration, if it has any
@@ -681,6 +685,10 @@ func NewContext(params Params) (ctx *Context, err Error) {
 		params.D*ctx.wotsSigBytes + params.FullHeight*params.N)
 	ctx.pkBytes = 2 * params.N
 	ctx.skBytes = ctx.indexBytes + 4*params.N
+
+	if ctx.p.Func == SHAKE && ctx.p.N != 64 {
+		ctx.x4Available = f1600x4.Available
+	}
 
 	return
 }

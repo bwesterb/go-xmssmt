@@ -133,30 +133,35 @@ func TestWotsSignThenVerify(t *testing.T) {
 	testWotSignThenVerify(ctx, t)
 }
 
-func BenchmarkWotsSign_SHA256_10_w16(b *testing.B) {
-	benchmarkWotsSign(b, 10, 16)
-}
 func BenchmarkWotsSign_SHA256_16_w16(b *testing.B) {
-	benchmarkWotsSign(b, 16, 16)
-}
-func BenchmarkWotsSign_SHA256_20_w16(b *testing.B) {
-	benchmarkWotsSign(b, 20, 16)
-}
-func BenchmarkWotsSign_SHA256_10_w256(b *testing.B) {
-	benchmarkWotsSign(b, 10, 256)
+	benchmarkWotsSign(b, true, 16, 16)
 }
 func BenchmarkWotsSign_SHA256_16_w256(b *testing.B) {
-	benchmarkWotsSign(b, 16, 256)
+	benchmarkWotsSign(b, true, 16, 256)
 }
-func BenchmarkWotsSign_SHA256_20_w256(b *testing.B) {
-	benchmarkWotsSign(b, 20, 256)
+func BenchmarkWotsSign_SHAKE_16_w16(b *testing.B) {
+	benchmarkWotsSign(b, false, 16, 16)
+}
+func BenchmarkWotsSign_SHAKE_16_w256(b *testing.B) {
+	benchmarkWotsSign(b, false, 16, 256)
+}
+func BenchmarkWotsSign_SHAKE_32_w16(b *testing.B) {
+	benchmarkWotsSign(b, false, 32, 16)
+}
+func BenchmarkWotsSign_SHAKE_32_w256(b *testing.B) {
+	benchmarkWotsSign(b, false, 32, 256)
 }
 
-func benchmarkWotsSign(b *testing.B, H uint32, WotsW uint16) {
+func benchmarkWotsSign(b *testing.B, sha bool, N uint32, WotsW uint16) {
+	f := SHA2
+	if !sha {
+		f = SHAKE
+	}
+
 	ctx, _ := NewContext(Params{
-		Func:       SHA2,
-		N:          32,
-		FullHeight: H,
+		Func:       f,
+		N:          N,
+		FullHeight: 10,
 		D:          1,
 		WotsW:      WotsW,
 	})
@@ -173,10 +178,12 @@ func benchmarkWotsSign(b *testing.B, H uint32, WotsW uint16) {
 		addr[i] = 500000000 * uint32(i)
 	}
 	pad := ctx.newScratchPad()
+	out := make([]byte, ctx.wotsSigBytes)
+	ph := ctx.precomputeHashes(pubSeed, skSeed)
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		rand.Read(msg)
-		ctx.wotsSign(pad, msg, pubSeed, skSeed, address(addr))
+		ctx.wotsSignInto(pad, msg, ph, address(addr), out)
 	}
 }
 
@@ -209,5 +216,59 @@ func benchmarkWotsVerify(b *testing.B, oid uint32) {
 	for n := 0; n < b.N; n++ {
 		rand.Read(msg)
 		ctx.wotsPkFromSigInto(pad, sig, msg, ph, address(addr), pad.wotsBuf())
+	}
+}
+
+func BenchmarkWotsPkGen_SHA256_16_w16(b *testing.B) {
+	benchmarkWotsPkGen(b, true, 16, 16)
+}
+func BenchmarkWotsPkGen_SHA256_16_w256(b *testing.B) {
+	benchmarkWotsPkGen(b, true, 16, 256)
+}
+func BenchmarkWotsPkGen_SHAKE_16_w16(b *testing.B) {
+	benchmarkWotsPkGen(b, false, 16, 16)
+}
+func BenchmarkWotsPkGen_SHAKE_16_w256(b *testing.B) {
+	benchmarkWotsPkGen(b, false, 16, 256)
+}
+func BenchmarkWotsPkGen_SHAKE_32_w16(b *testing.B) {
+	benchmarkWotsPkGen(b, false, 32, 16)
+}
+func BenchmarkWotsPkGen_SHAKE_32_w256(b *testing.B) {
+	benchmarkWotsPkGen(b, false, 32, 256)
+}
+
+func benchmarkWotsPkGen(b *testing.B, sha bool, N uint32, WotsW uint16) {
+	f := SHA2
+	if !sha {
+		f = SHAKE
+	}
+
+	ctx, _ := NewContext(Params{
+		Func:       f,
+		N:          N,
+		FullHeight: 10,
+		D:          1,
+		WotsW:      WotsW,
+	})
+	var pubSeed []byte = make([]byte, ctx.p.N)
+	var skSeed []byte = make([]byte, ctx.p.N)
+	var msg []byte = make([]byte, ctx.p.N)
+	var addr [8]uint32
+	out := make([]byte, ctx.wotsLen*ctx.p.N)
+	for i := 0; i < int(ctx.p.N); i++ {
+		pubSeed[i] = byte(2 * i)
+		skSeed[i] = byte(i)
+		msg[i] = byte(3 * i)
+	}
+	for i := 0; i < 8; i++ {
+		addr[i] = 500000000 * uint32(i)
+	}
+	pad := ctx.newScratchPad()
+	ph := ctx.precomputeHashes(pubSeed, skSeed)
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		rand.Read(msg)
+		ctx.wotsPkGenInto(pad, ph, address(addr), out)
 	}
 }
