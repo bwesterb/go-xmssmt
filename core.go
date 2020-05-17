@@ -30,8 +30,9 @@ type merkleTree struct {
 
 // A scratchpad used by a single goroutine to avoid memory allocation.
 type scratchPad struct {
-	buf []byte
-	n   uint32
+	buf     []byte
+	n       uint32
+	wotsLen uint32
 
 	hash hashScratchPad
 }
@@ -485,15 +486,20 @@ func (pad scratchPad) wotsSkSeedBuf() []byte {
 }
 
 func (pad scratchPad) wotsBuf() []byte {
-	return pad.buf[10*pad.n+64:]
+	return pad.buf[10*pad.n+64 : (10+pad.wotsLen)*pad.n+64]
+}
+
+func (pad scratchPad) fX4Buf() []byte {
+	return pad.buf[(10+pad.wotsLen)*pad.n+64:]
 }
 
 func (ctx *Context) newScratchPad() scratchPad {
 	n := ctx.p.N
 	pad := scratchPad{
-		buf:  make([]byte, 10*n+64+ctx.p.N*ctx.wotsLen),
-		n:    n,
-		hash: ctx.newHashScratchPad(),
+		buf:     make([]byte, 18*n+64+n*ctx.wotsLen),
+		n:       n,
+		wotsLen: ctx.wotsLen,
+		hash:    ctx.newHashScratchPad(),
 	}
 	return pad
 }

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/hex"
 	"testing"
+
+	"github.com/bwesterb/go-xmssmt/internal/f1600x4"
 )
 
 func testHashMessage(ctx *Context, expect string, t *testing.T) {
@@ -31,6 +33,107 @@ func TestHashMessage(t *testing.T) {
 	testHashMessage(NewContextFromOid(false, 4), "231602b3934f501086caf489aaa191befaed2b10bbc211b0516a96f11c76481383600892e4da35f20ccb6c252e1cbfb00640303efb235101b8d541544f74dce4", t)
 	testHashMessage(NewContextFromOid(false, 7), "223b2516f22f4a9e3f9860455947b8a5142d0ab42032864828bad49d598d2a97", t)
 	testHashMessage(NewContextFromOid(false, 10), "2ed0d21c1180d9bd82a5542f3ccf9c5b1eee8f88e60ff0fdbe01a784d456de7a3546074b8fbc03904bc4eb4cc45ae64f3e5f2e1dcf02d4d7b68719cefe19dafa", t)
+}
+
+func TestFX4(t *testing.T) {
+	if !f1600x4.Available {
+		t.Skip()
+	}
+	testFX4(t, 16)
+	testFX4(t, 32)
+}
+
+func testFX4(t *testing.T, N uint32) {
+	ctx, _ := NewContext(Params{Func: SHAKE, N: N, WotsW: 256, FullHeight: 1, D: 1})
+	var addr [4]address
+	var buf1 [4][]byte
+	var in [4][]byte
+	buf2 := make([]byte, ctx.p.N)
+	var key []byte = make([]byte, ctx.p.N)
+	for j := uint32(0); j < 4; j++ {
+		buf1[j] = make([]byte, ctx.p.N)
+		in[j] = make([]byte, ctx.p.N)
+		for i := uint32(0); i < 8; i++ {
+			addr[j][i] = i + 8*j
+		}
+		for i := uint32(0); i < ctx.p.N; i++ {
+			in[j][i] = byte(j*ctx.p.N + i)
+		}
+	}
+	for i := 0; i < int(ctx.p.N); i++ {
+		key[i] = byte(i)
+	}
+	pad := ctx.newScratchPad()
+	ctx.fX4Into(pad, in, key, addr, buf1)
+	ph := ctx.precomputeHashes(key, key)
+	for j := 0; j < 4; j++ {
+		ctx.fInto(pad, in[j], ph, addr[j], buf2)
+		if !bytes.Equal(buf2, buf1[j]) {
+			t.Fatal()
+		}
+	}
+}
+
+func TestPrfUintX4(t *testing.T) {
+	if !f1600x4.Available {
+		t.Skip()
+	}
+	testPrfUintX4(t, 16)
+	testPrfUintX4(t, 32)
+}
+
+func testPrfUintX4(t *testing.T, N uint32) {
+	ctx, _ := NewContext(Params{Func: SHAKE, N: N, WotsW: 256, FullHeight: 1, D: 1})
+	var buf1 [4][]byte
+	buf2 := make([]byte, ctx.p.N)
+	var key []byte = make([]byte, ctx.p.N)
+	for j := 0; j < 4; j++ {
+		buf1[j] = make([]byte, ctx.p.N)
+	}
+	for i := 0; i < int(ctx.p.N); i++ {
+		key[i] = byte(i)
+	}
+	pad := ctx.newScratchPad()
+	ctx.prfUint64X4Into(pad, [4]uint64{0, 1, 2, 3}, key, buf1)
+	for j := 0; j < 4; j++ {
+		ctx.prfUint64Into(pad, uint64(j), key, buf2)
+		if !bytes.Equal(buf2, buf1[j]) {
+			t.Fatalf("testPrfUintX4 N=%d", N)
+		}
+	}
+}
+
+func TestPrfX4(t *testing.T) {
+	if !f1600x4.Available {
+		t.Skip()
+	}
+	testPrfX4(t, 16)
+	testPrfX4(t, 32)
+}
+
+func testPrfX4(t *testing.T, N uint32) {
+	ctx, _ := NewContext(Params{Func: SHAKE, N: N, WotsW: 256, FullHeight: 1, D: 1})
+	var addr [4]address
+	var buf1 [4][]byte
+	buf2 := make([]byte, ctx.p.N)
+	var key []byte = make([]byte, ctx.p.N)
+	for j := 0; j < 4; j++ {
+		buf1[j] = make([]byte, ctx.p.N)
+		for i := 0; i < 8; i++ {
+			addr[j][i] = uint32(i + 8*j)
+		}
+	}
+	for i := 0; i < int(ctx.p.N); i++ {
+		key[i] = byte(i)
+	}
+	pad := ctx.newScratchPad()
+	ctx.prfAddrX4Into(pad, addr, key, buf1)
+	for j := 0; j < 4; j++ {
+		ctx.prfAddrInto(pad, addr[j], key, buf2)
+		if !bytes.Equal(buf2, buf1[j]) {
+			t.Fatal()
+		}
+	}
 }
 
 func testPrf(ctx *Context, expect string, t *testing.T) {
@@ -107,4 +210,27 @@ func TestH(t *testing.T) {
 	testH(NewContextFromOid(false, 4), "cd341b0001f4adb53bedb31e3e54e4f4a2e520daf6d6bfeb1f2fbb5982f40adaa2c1e8b715b72644bf49b016404273ebf94ebe5b0d1911e9478ac94cd2aec537", t)
 	testH(NewContextFromOid(false, 7), "3a533fcb775013ac476b09db9d59c07f9a16f5800fe5deeede8cfdb38e86634b", t)
 	testH(NewContextFromOid(false, 10), "2516532c0ee77300a2e15bd6f1da565740302ab48105503ad1bf05305ed9247da9544b97acfe4790150157f937d8aa3f8deef1447295b8640c8cff0c4d4c006f", t)
+}
+
+func BenchmarkPrfAddX4(b *testing.B) {
+	ctx, _ := NewContext(Params{Func: SHAKE, N: 16, WotsW: 16, FullHeight: 1, D: 1})
+	var addr [4]address
+	var buf1 [4][]byte
+	var key []byte = make([]byte, ctx.p.N)
+	for j := 0; j < 4; j++ {
+		buf1[j] = make([]byte, ctx.p.N)
+		for i := 0; i < 8; i++ {
+			addr[j][i] = uint32(i + 8*j)
+		}
+	}
+	for i := 0; i < int(ctx.p.N); i++ {
+		key[i] = byte(i)
+	}
+	pad := ctx.newScratchPad()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for k := 0; k < 1000; k++ {
+			ctx.prfAddrX4Into(pad, addr, key, buf1)
+		}
+	}
 }
