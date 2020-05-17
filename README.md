@@ -72,7 +72,7 @@ by the RFC by checking `Context.FromRFC()`.
 Changes
 -------
 
-### 1.3.0 (unreleased)
+### 1.3.0 (17-05-2020)
 
 - When available, use AVX2 to compute SHAKE fourway.  This makes SHAKE
   faster than SHA2.
