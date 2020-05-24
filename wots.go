@@ -10,29 +10,12 @@ import (
 func (ctx *Context) genWotsSk(pad scratchPad, ph precomputedHashes,
 	addr address, out []byte) {
 	n := ctx.p.N
-	addr.setChain(0)
 	addr.setHash(0)
 	addr.setKeyAndMask(0)
-	buf := pad.wotsSkSeedBuf()
-	ph.prfAddrSkSeedInto(pad, addr, buf)
 
-	if !ctx.x4Available {
-		// Unvectorized
-		for i := uint32(0); i < ctx.wotsLen; i++ {
-			ctx.prfUint64Into(pad, uint64(i), buf, out[i*ctx.p.N:])
-		}
-		return
-	}
-
-	// Fourway vectorized
-	for i := uint32(0); i < ctx.wotsLen; i += 4 {
-		var bufs [4][]byte
-		for j := uint32(0); j < 4 && i+j < ctx.wotsLen; j++ {
-			bufs[j] = out[n*(i+j) : n*(i+j+1)]
-		}
-		ctx.prfUint64X4Into(pad,
-			[4]uint64{uint64(i), uint64(i + 1), uint64(i + 2), uint64(i + 3)},
-			buf, bufs)
+	for i := uint32(0); i < ctx.wotsLen; i++ {
+		addr.setChain(i)
+		ctx.prfKeyGenInto(pad, ph, addr, out[i*n:(i+1)*n])
 	}
 }
 

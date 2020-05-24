@@ -210,18 +210,6 @@ func (ctx *Context) genLeafInto(pad scratchPad, ph precomputedHashes,
 	ctx.lTreeInto(pad, pk, ph, lTreeAddr, out)
 }
 
-// Derive the seed for the WOTS+ key pair at the given address
-// from the secret key seed
-func (ctx *Context) getWotsSeed(pad scratchPad, ph precomputedHashes,
-	addr address) []byte {
-	addr.setChain(0)
-	addr.setHash(0)
-	addr.setKeyAndMask(0)
-	ret := make([]byte, ctx.p.N)
-	ph.prfAddrSkSeedInto(pad, addr, ret)
-	return ret
-}
-
 // Returns the path of subtrees associated to signature sequence number.
 // Also, for each of the subtrees, returns the leaf in the subtree
 // to which the subtree (or signature) below it corresponds.
@@ -477,26 +465,30 @@ func (pad scratchPad) prfBuf() []byte {
 	return pad.buf[7*pad.n : 9*pad.n+32]
 }
 
+func (pad scratchPad) prfKeyGenBuf() []byte {
+	return pad.buf[7*pad.n : 10*pad.n+32]
+}
+
 func (pad scratchPad) prfAddrBuf() []byte {
-	return pad.buf[9*pad.n+32 : 9*pad.n+64]
+	return pad.buf[10*pad.n+32 : 10*pad.n+64]
 }
 
 func (pad scratchPad) wotsSkSeedBuf() []byte {
-	return pad.buf[9*pad.n+64 : 10*pad.n+64]
+	return pad.buf[10*pad.n+64 : 11*pad.n+64]
 }
 
 func (pad scratchPad) wotsBuf() []byte {
-	return pad.buf[10*pad.n+64 : (10+pad.wotsLen)*pad.n+64]
+	return pad.buf[11*pad.n+64 : (11+pad.wotsLen)*pad.n+64]
 }
 
 func (pad scratchPad) fX4Buf() []byte {
-	return pad.buf[(10+pad.wotsLen)*pad.n+64:]
+	return pad.buf[(11+pad.wotsLen)*pad.n+64:]
 }
 
 func (ctx *Context) newScratchPad() scratchPad {
 	n := ctx.p.N
 	pad := scratchPad{
-		buf:     make([]byte, 18*n+64+n*ctx.wotsLen),
+		buf:     make([]byte, 19*n+64+n*ctx.wotsLen),
 		n:       n,
 		wotsLen: ctx.wotsLen,
 		hash:    ctx.newHashScratchPad(),

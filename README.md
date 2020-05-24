@@ -72,6 +72,15 @@ by the RFC by checking `Context.FromRFC()`.
 Changes
 -------
 
+### 1.4.0 (unreleased)
+
+- The way the private key is generated has been changed in the same
+  way as [was done](https://github.com/XMSS/xmss-reference/commit/3e28db2362f25600699972766e7782635b1826f5)
+  for the reference implementation to prevent a multi-target attack
+  identified by ETSI TC CYBER WG QSC.  As XMSS hasn't been in wide use yet,
+  old keys do not need to be regenerated.  Note that this will
+  change the output of `Derive()`.
+
 ### 1.3.0 (17-05-2020)
 
 - When available, use AVX2 to compute SHAKE fourway.  This makes SHAKE

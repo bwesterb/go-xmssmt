@@ -74,35 +74,6 @@ func testFX4(t *testing.T, N uint32) {
 	}
 }
 
-func TestPrfUintX4(t *testing.T) {
-	if !f1600x4.Available {
-		t.Skip()
-	}
-	testPrfUintX4(t, 16)
-	testPrfUintX4(t, 32)
-}
-
-func testPrfUintX4(t *testing.T, N uint32) {
-	ctx, _ := NewContext(Params{Func: SHAKE, N: N, WotsW: 256, FullHeight: 1, D: 1})
-	var buf1 [4][]byte
-	buf2 := make([]byte, ctx.p.N)
-	var key []byte = make([]byte, ctx.p.N)
-	for j := 0; j < 4; j++ {
-		buf1[j] = make([]byte, ctx.p.N)
-	}
-	for i := 0; i < int(ctx.p.N); i++ {
-		key[i] = byte(i)
-	}
-	pad := ctx.newScratchPad()
-	ctx.prfUint64X4Into(pad, [4]uint64{0, 1, 2, 3}, key, buf1)
-	for j := 0; j < 4; j++ {
-		ctx.prfUint64Into(pad, uint64(j), key, buf2)
-		if !bytes.Equal(buf2, buf1[j]) {
-			t.Fatalf("testPrfUintX4 N=%d", N)
-		}
-	}
-}
-
 func TestPrfX4(t *testing.T) {
 	if !f1600x4.Available {
 		t.Skip()
