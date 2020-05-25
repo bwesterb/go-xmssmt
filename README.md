@@ -72,7 +72,7 @@ by the RFC by checking `Context.FromRFC()` and `Context.FromNIST()`.
 Changes
 -------
 
-### 1.4.0 (unreleased)
+### 1.4.0 (25-05-2020)
 
 - The way the private key is generated has been changed in the same
   way as [was done](https://github.com/XMSS/xmss-reference/commit/3e28db2362f25600699972766e7782635b1826f5)
