@@ -53,10 +53,10 @@ func (p Params) String() string {
 	wString := ""
 	prfString := ""
 	if p.Prf == NIST && p.N != 24 {
-		prfString = "NIST"
+		prfString = "_NIST"
 	}
 	if p.Prf == RFC && p.N == 24 {
-		prfString = "RFC"
+		prfString = "_RFC"
 	}
 	if p.WotsW != 16 {
 		wString = fmt.Sprintf("_w%d", p.WotsW)
@@ -461,6 +461,11 @@ func ListNames2() (names []string) {
 				p.Func = h
 				p.WotsW = w
 				p.N = n
+				if n == 24 {
+					p.Prf = NIST
+				} else {
+					p.Prf = RFC
+				}
 				add(20, 2)
 				add(20, 4)
 				add(40, 2)
