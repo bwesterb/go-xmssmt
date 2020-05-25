@@ -2,8 +2,8 @@ XMSSMT for Go
 -------------
 
 This is a Go implementation of the stateful hash-based signature-scheme
-XMSSMT described in [rfc8391 (XMSS: Extended Hash-Based Signatures)](
-https://tools.ietf.org/html/rfc8391).
+XMSS(MT) described in [rfc8391 (XMSS: Extended Hash-Based Signatures)](
+https://tools.ietf.org/html/rfc8391) and [NIST SP 800-208](https://csrc.nist.gov/publications/detail/sp/800-208/draft).
 
 ```go
 package main
@@ -62,12 +62,12 @@ Note on compatibility
 ---------------------
 
 `go-xmssmt` supports instances of XMSS[MT] that are (currently) not listed
-in the RFC and so might not be supported by other implementations, such
+in the RFC or NIST SP and so might not be supported by other implementations, such
 as `XMSSMT-SHAKE_20/4_128_w256`.  `go-xmssmt` encodes the parameters of these
 non-standard instances in the reserved space of Oid numbers,
 see [`Params.MarshalBinary()`](https://godoc.org/github.com/bwesterb/go-xmssmt#Params.MarshalBinary).
 For maximum compatibility, one can check whether the instance is supported
-by the RFC by checking `Context.FromRFC()`.
+by the RFC by checking `Context.FromRFC()` and `Context.FromNIST()`.
 
 Changes
 -------
@@ -80,6 +80,17 @@ Changes
   identified by ETSI TC CYBER WG QSC.  As XMSS hasn't been in wide use yet,
   old keys do not need to be regenerated.  Note that this will
   change the output of `Derive()`.
+- Add support for the instances listed in
+  [NIST SP 800-208](https://csrc.nist.gov/publications/detail/sp/800-208/draft).
+  Note that the 192 bit instances listed in the NIST publication use a
+  different PRF construction and so `XMSSMT-SHAKE_20/4_192` changes meaning
+  in this version.  The previously unlisted instance using the RFC construction
+  can be accessed via `XMSSMT-SHAKE_20/4_192_RFC`.  To use the NIST PRF
+  construction on other modes, one can add `_NIST` at the end, eg.
+  `XMSSMT-SHA2_20/4_128_NIST`.
+- Fixed a memory corruption bug in the unlisted 128 bit SHA2 instances.
+  Before this version, keys and signatures for 128 bit SHA2 instances
+  were incorrectly generated and verified.
 
 ### 1.3.0 (17-05-2020)
 

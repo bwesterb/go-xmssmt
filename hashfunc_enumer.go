@@ -7,9 +7,9 @@ import (
 	"fmt"
 )
 
-const _HashFuncName = "SHA2SHAKE"
+const _HashFuncName = "SHA2SHAKESHAKE256"
 
-var _HashFuncIndex = [...]uint8{0, 4, 9}
+var _HashFuncIndex = [...]uint8{0, 4, 9, 17}
 
 func (i HashFunc) String() string {
 	if i >= HashFunc(len(_HashFuncIndex)-1) {
@@ -18,11 +18,12 @@ func (i HashFunc) String() string {
 	return _HashFuncName[_HashFuncIndex[i]:_HashFuncIndex[i+1]]
 }
 
-var _HashFuncValues = []HashFunc{0, 1}
+var _HashFuncValues = []HashFunc{0, 1, 2}
 
 var _HashFuncNameToValueMap = map[string]HashFunc{
-	_HashFuncName[0:4]: 0,
-	_HashFuncName[4:9]: 1,
+	_HashFuncName[0:4]:  0,
+	_HashFuncName[4:9]:  1,
+	_HashFuncName[9:17]: 2,
 }
 
 // HashFuncString retrieves an enum value from the enum constants string name.

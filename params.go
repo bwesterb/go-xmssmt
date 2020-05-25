@@ -10,11 +10,29 @@ import (
 	"strings"
 )
 
+// Hash function to use.
 type HashFunc uint8
 
 const (
+	// SHA-256 for n≤32 and SHA-512 otherwise.  (From the RFC.)
 	SHA2 HashFunc = iota
+
+	// SHAKE-128 for n≤32 and SHAKE-256 otherwise.  (From the RFC.)
 	SHAKE
+
+	// SHAKE-256.  (From NIST SP 800-208.)
+	SHAKE256
+)
+
+// Way to construct the various PRFs from the hash function.
+type PrfConstruction uint8
+
+const (
+	// As described by RFC8391.
+	RFC PrfConstruction = iota
+
+	// As described by NIST SP 800-208.
+	NIST
 )
 
 // Parameters of an XMSS[MT] instance
@@ -26,78 +44,134 @@ type Params struct {
 
 	// WOTS+ Winternitz parameter.  Only 4, 16 and 256 are supported.
 	WotsW uint16
+
+	// Method to use for construction of the PRFs.
+	Prf PrfConstruction
 }
 
 func (p Params) String() string {
 	wString := ""
+	prfString := ""
+	if p.Prf == NIST && p.N != 24 {
+		prfString = "NIST"
+	}
+	if p.Prf == RFC && p.N == 24 {
+		prfString = "RFC"
+	}
 	if p.WotsW != 16 {
 		wString = fmt.Sprintf("_w%d", p.WotsW)
 	}
 	if p.D == 1 {
-		return fmt.Sprintf("XMSS-%s_%d_%d%s",
-			p.Func, p.FullHeight, p.N*8, wString)
+		return fmt.Sprintf("XMSS-%s_%d_%d%s%s",
+			p.Func, p.FullHeight, p.N*8, wString, prfString)
 	}
-	return fmt.Sprintf("XMSSMT-%s_%d/%d_%d%s",
-		p.Func, p.FullHeight, p.D, p.N*8, wString)
+	return fmt.Sprintf("XMSSMT-%s_%d/%d_%d%s%s",
+		p.Func, p.FullHeight, p.D, p.N*8, wString, prfString)
 }
 
 // Registry of named XMSS[MT] algorithms
 var registry []regEntry = []regEntry{
-	{"XMSSMT-SHA2_20/2_256", true, 0x00000001, Params{SHA2, 32, 20, 2, 16}},
-	{"XMSSMT-SHA2_20/4_256", true, 0x00000002, Params{SHA2, 32, 20, 4, 16}},
-	{"XMSSMT-SHA2_40/2_256", true, 0x00000003, Params{SHA2, 32, 40, 2, 16}},
-	{"XMSSMT-SHA2_40/4_256", true, 0x00000004, Params{SHA2, 32, 40, 4, 16}},
-	{"XMSSMT-SHA2_40/8_256", true, 0x00000005, Params{SHA2, 32, 40, 8, 16}},
-	{"XMSSMT-SHA2_60/3_256", true, 0x00000006, Params{SHA2, 32, 60, 3, 16}},
-	{"XMSSMT-SHA2_60/6_256", true, 0x00000007, Params{SHA2, 32, 60, 6, 16}},
-	{"XMSSMT-SHA2_60/12_256", true, 0x00000008, Params{SHA2, 32, 60, 12, 16}},
+	// From RFC8391.
+	{"XMSSMT-SHA2_20/2_256", true, 0x00000001, Params{SHA2, 32, 20, 2, 16, RFC}},
+	{"XMSSMT-SHA2_20/4_256", true, 0x00000002, Params{SHA2, 32, 20, 4, 16, RFC}},
+	{"XMSSMT-SHA2_40/2_256", true, 0x00000003, Params{SHA2, 32, 40, 2, 16, RFC}},
+	{"XMSSMT-SHA2_40/4_256", true, 0x00000004, Params{SHA2, 32, 40, 4, 16, RFC}},
+	{"XMSSMT-SHA2_40/8_256", true, 0x00000005, Params{SHA2, 32, 40, 8, 16, RFC}},
+	{"XMSSMT-SHA2_60/3_256", true, 0x00000006, Params{SHA2, 32, 60, 3, 16, RFC}},
+	{"XMSSMT-SHA2_60/6_256", true, 0x00000007, Params{SHA2, 32, 60, 6, 16, RFC}},
+	{"XMSSMT-SHA2_60/12_256", true, 0x00000008, Params{SHA2, 32, 60, 12, 16, RFC}},
 
-	{"XMSSMT-SHA2_20/2_512", true, 0x00000009, Params{SHA2, 64, 20, 2, 16}},
-	{"XMSSMT-SHA2_20/4_512", true, 0x0000000a, Params{SHA2, 64, 20, 4, 16}},
-	{"XMSSMT-SHA2_40/2_512", true, 0x0000000b, Params{SHA2, 64, 40, 2, 16}},
-	{"XMSSMT-SHA2_40/4_512", true, 0x0000000c, Params{SHA2, 64, 40, 4, 16}},
-	{"XMSSMT-SHA2_40/8_512", true, 0x0000000d, Params{SHA2, 64, 40, 8, 16}},
-	{"XMSSMT-SHA2_60/3_512", true, 0x0000000e, Params{SHA2, 64, 60, 3, 16}},
-	{"XMSSMT-SHA2_60/6_512", true, 0x0000000f, Params{SHA2, 64, 60, 6, 16}},
-	{"XMSSMT-SHA2_60/12_512", true, 0x00000010, Params{SHA2, 64, 60, 12, 16}},
+	{"XMSSMT-SHA2_20/2_512", true, 0x00000009, Params{SHA2, 64, 20, 2, 16, RFC}},
+	{"XMSSMT-SHA2_20/4_512", true, 0x0000000a, Params{SHA2, 64, 20, 4, 16, RFC}},
+	{"XMSSMT-SHA2_40/2_512", true, 0x0000000b, Params{SHA2, 64, 40, 2, 16, RFC}},
+	{"XMSSMT-SHA2_40/4_512", true, 0x0000000c, Params{SHA2, 64, 40, 4, 16, RFC}},
+	{"XMSSMT-SHA2_40/8_512", true, 0x0000000d, Params{SHA2, 64, 40, 8, 16, RFC}},
+	{"XMSSMT-SHA2_60/3_512", true, 0x0000000e, Params{SHA2, 64, 60, 3, 16, RFC}},
+	{"XMSSMT-SHA2_60/6_512", true, 0x0000000f, Params{SHA2, 64, 60, 6, 16, RFC}},
+	{"XMSSMT-SHA2_60/12_512", true, 0x00000010, Params{SHA2, 64, 60, 12, 16, RFC}},
 
-	{"XMSSMT-SHAKE_20/2_256", true, 0x00000011, Params{SHAKE, 32, 20, 2, 16}},
-	{"XMSSMT-SHAKE_20/4_256", true, 0x00000012, Params{SHAKE, 32, 20, 4, 16}},
-	{"XMSSMT-SHAKE_40/2_256", true, 0x00000013, Params{SHAKE, 32, 40, 2, 16}},
-	{"XMSSMT-SHAKE_40/4_256", true, 0x00000014, Params{SHAKE, 32, 40, 4, 16}},
-	{"XMSSMT-SHAKE_40/8_256", true, 0x00000015, Params{SHAKE, 32, 40, 8, 16}},
-	{"XMSSMT-SHAKE_60/3_256", true, 0x00000016, Params{SHAKE, 32, 60, 3, 16}},
-	{"XMSSMT-SHAKE_60/6_256", true, 0x00000017, Params{SHAKE, 32, 60, 6, 16}},
-	{"XMSSMT-SHAKE_60/12_256", true, 0x00000018, Params{SHAKE, 32, 60, 12, 16}},
+	{"XMSSMT-SHAKE_20/2_256", true, 0x00000011, Params{SHAKE, 32, 20, 2, 16, RFC}},
+	{"XMSSMT-SHAKE_20/4_256", true, 0x00000012, Params{SHAKE, 32, 20, 4, 16, RFC}},
+	{"XMSSMT-SHAKE_40/2_256", true, 0x00000013, Params{SHAKE, 32, 40, 2, 16, RFC}},
+	{"XMSSMT-SHAKE_40/4_256", true, 0x00000014, Params{SHAKE, 32, 40, 4, 16, RFC}},
+	{"XMSSMT-SHAKE_40/8_256", true, 0x00000015, Params{SHAKE, 32, 40, 8, 16, RFC}},
+	{"XMSSMT-SHAKE_60/3_256", true, 0x00000016, Params{SHAKE, 32, 60, 3, 16, RFC}},
+	{"XMSSMT-SHAKE_60/6_256", true, 0x00000017, Params{SHAKE, 32, 60, 6, 16, RFC}},
+	{"XMSSMT-SHAKE_60/12_256", true, 0x00000018, Params{SHAKE, 32, 60, 12, 16, RFC}},
 
-	{"XMSSMT-SHAKE_20/2_512", true, 0x00000019, Params{SHAKE, 64, 20, 2, 16}},
-	{"XMSSMT-SHAKE_20/4_512", true, 0x0000001a, Params{SHAKE, 64, 20, 4, 16}},
-	{"XMSSMT-SHAKE_40/2_512", true, 0x0000001b, Params{SHAKE, 64, 40, 2, 16}},
-	{"XMSSMT-SHAKE_40/4_512", true, 0x0000001c, Params{SHAKE, 64, 40, 4, 16}},
-	{"XMSSMT-SHAKE_40/8_512", true, 0x0000001d, Params{SHAKE, 64, 40, 8, 16}},
-	{"XMSSMT-SHAKE_60/3_512", true, 0x0000001e, Params{SHAKE, 64, 60, 3, 16}},
-	{"XMSSMT-SHAKE_60/6_512", true, 0x0000001f, Params{SHAKE, 64, 60, 6, 16}},
-	{"XMSSMT-SHAKE_60/12_512", true, 0x00000020, Params{SHAKE, 64, 60, 12, 16}},
+	{"XMSSMT-SHAKE_20/2_512", true, 0x00000019, Params{SHAKE, 64, 20, 2, 16, RFC}},
+	{"XMSSMT-SHAKE_20/4_512", true, 0x0000001a, Params{SHAKE, 64, 20, 4, 16, RFC}},
+	{"XMSSMT-SHAKE_40/2_512", true, 0x0000001b, Params{SHAKE, 64, 40, 2, 16, RFC}},
+	{"XMSSMT-SHAKE_40/4_512", true, 0x0000001c, Params{SHAKE, 64, 40, 4, 16, RFC}},
+	{"XMSSMT-SHAKE_40/8_512", true, 0x0000001d, Params{SHAKE, 64, 40, 8, 16, RFC}},
+	{"XMSSMT-SHAKE_60/3_512", true, 0x0000001e, Params{SHAKE, 64, 60, 3, 16, RFC}},
+	{"XMSSMT-SHAKE_60/6_512", true, 0x0000001f, Params{SHAKE, 64, 60, 6, 16, RFC}},
+	{"XMSSMT-SHAKE_60/12_512", true, 0x00000020, Params{SHAKE, 64, 60, 12, 16, RFC}},
 
-	{"XMSS-SHA2_10_256", false, 0x00000001, Params{SHA2, 32, 10, 1, 16}},
-	{"XMSS-SHA2_16_256", false, 0x00000002, Params{SHA2, 32, 16, 1, 16}},
-	{"XMSS-SHA2_20_256", false, 0x00000003, Params{SHA2, 32, 20, 1, 16}},
-	{"XMSS-SHA2_10_512", false, 0x00000004, Params{SHA2, 64, 10, 1, 16}},
-	{"XMSS-SHA2_16_512", false, 0x00000005, Params{SHA2, 64, 16, 1, 16}},
-	{"XMSS-SHA2_20_512", false, 0x00000006, Params{SHA2, 64, 20, 1, 16}},
+	// From NIST SP 800-208.
+	{"XMSSMT-SHA2_20/2_192", true, 0x00000021, Params{SHA2, 24, 20, 2, 16, NIST}},
+	{"XMSSMT-SHA2_20/4_192", true, 0x00000022, Params{SHA2, 24, 20, 4, 16, NIST}},
+	{"XMSSMT-SHA2_40/2_192", true, 0x00000023, Params{SHA2, 24, 40, 2, 16, NIST}},
+	{"XMSSMT-SHA2_40/4_192", true, 0x00000024, Params{SHA2, 24, 40, 4, 16, NIST}},
+	{"XMSSMT-SHA2_40/8_192", true, 0x00000025, Params{SHA2, 24, 40, 8, 16, NIST}},
+	{"XMSSMT-SHA2_60/3_192", true, 0x00000026, Params{SHA2, 24, 60, 3, 16, NIST}},
+	{"XMSSMT-SHA2_60/6_192", true, 0x00000027, Params{SHA2, 24, 60, 6, 16, NIST}},
+	{"XMSSMT-SHA2_60/12_192", true, 0x00000028, Params{SHA2, 24, 60, 12, 16, NIST}},
 
-	{"XMSS-SHAKE_10_256", false, 0x00000007, Params{SHAKE, 32, 10, 1, 16}},
-	{"XMSS-SHAKE_16_256", false, 0x00000008, Params{SHAKE, 32, 16, 1, 16}},
-	{"XMSS-SHAKE_20_256", false, 0x00000009, Params{SHAKE, 32, 20, 1, 16}},
-	{"XMSS-SHAKE_10_512", false, 0x0000000a, Params{SHAKE, 64, 10, 1, 16}},
-	{"XMSS-SHAKE_16_512", false, 0x0000000b, Params{SHAKE, 64, 16, 1, 16}},
-	{"XMSS-SHAKE_20_512", false, 0x0000000c, Params{SHAKE, 64, 20, 1, 16}},
+	{"XMSSMT-SHAKE256_20/2_256", true, 0x00000029, Params{SHAKE256, 32, 20, 2, 16, RFC}},
+	{"XMSSMT-SHAKE256_20/4_256", true, 0x0000002a, Params{SHAKE256, 32, 20, 4, 16, RFC}},
+	{"XMSSMT-SHAKE256_40/2_256", true, 0x0000002b, Params{SHAKE256, 32, 40, 2, 16, RFC}},
+	{"XMSSMT-SHAKE256_40/4_256", true, 0x0000002c, Params{SHAKE256, 32, 40, 4, 16, RFC}},
+	{"XMSSMT-SHAKE256_40/8_256", true, 0x0000002d, Params{SHAKE256, 32, 40, 8, 16, RFC}},
+	{"XMSSMT-SHAKE256_60/3_256", true, 0x0000002e, Params{SHAKE256, 32, 60, 3, 16, RFC}},
+	{"XMSSMT-SHAKE256_60/6_256", true, 0x0000002f, Params{SHAKE256, 32, 60, 6, 16, RFC}},
+	{"XMSSMT-SHAKE256_60/12_256", true, 0x00000030, Params{SHAKE256, 32, 60, 12, 16, RFC}},
+
+	{"XMSSMT-SHAKE256_20/2_192", true, 0x00000031, Params{SHAKE256, 24, 20, 2, 16, NIST}},
+	{"XMSSMT-SHAKE256_20/4_192", true, 0x00000032, Params{SHAKE256, 24, 20, 4, 16, NIST}},
+	{"XMSSMT-SHAKE256_40/2_192", true, 0x00000033, Params{SHAKE256, 24, 40, 2, 16, NIST}},
+	{"XMSSMT-SHAKE256_40/4_192", true, 0x00000034, Params{SHAKE256, 24, 40, 4, 16, NIST}},
+	{"XMSSMT-SHAKE256_40/8_192", true, 0x00000035, Params{SHAKE256, 24, 40, 8, 16, NIST}},
+	{"XMSSMT-SHAKE256_60/3_192", true, 0x00000036, Params{SHAKE256, 24, 60, 3, 16, NIST}},
+	{"XMSSMT-SHAKE256_60/6_192", true, 0x00000037, Params{SHAKE256, 24, 60, 6, 16, NIST}},
+	{"XMSSMT-SHAKE256_60/12_192", true, 0x00000038, Params{SHAKE256, 24, 60, 12, 16, NIST}},
+
+	// From RFC8391.
+	{"XMSS-SHA2_10_256", false, 0x00000001, Params{SHA2, 32, 10, 1, 16, RFC}},
+	{"XMSS-SHA2_16_256", false, 0x00000002, Params{SHA2, 32, 16, 1, 16, RFC}},
+	{"XMSS-SHA2_20_256", false, 0x00000003, Params{SHA2, 32, 20, 1, 16, RFC}},
+
+	{"XMSS-SHA2_10_512", false, 0x00000004, Params{SHA2, 64, 10, 1, 16, RFC}},
+	{"XMSS-SHA2_16_512", false, 0x00000005, Params{SHA2, 64, 16, 1, 16, RFC}},
+	{"XMSS-SHA2_20_512", false, 0x00000006, Params{SHA2, 64, 20, 1, 16, RFC}},
+
+	{"XMSS-SHAKE_10_256", false, 0x00000007, Params{SHAKE, 32, 10, 1, 16, RFC}},
+	{"XMSS-SHAKE_16_256", false, 0x00000008, Params{SHAKE, 32, 16, 1, 16, RFC}},
+	{"XMSS-SHAKE_20_256", false, 0x00000009, Params{SHAKE, 32, 20, 1, 16, RFC}},
+
+	{"XMSS-SHAKE_10_512", false, 0x0000000a, Params{SHAKE, 64, 10, 1, 16, RFC}},
+	{"XMSS-SHAKE_16_512", false, 0x0000000b, Params{SHAKE, 64, 16, 1, 16, RFC}},
+	{"XMSS-SHAKE_20_512", false, 0x0000000c, Params{SHAKE, 64, 20, 1, 16, RFC}},
+
+	// From NIST SP 800-208.
+	{"XMSS-SHA2_10_192", false, 0x0000000d, Params{SHA2, 24, 10, 1, 16, NIST}},
+	{"XMSS-SHA2_16_192", false, 0x0000000e, Params{SHA2, 24, 16, 1, 16, NIST}},
+	{"XMSS-SHA2_20_192", false, 0x0000000f, Params{SHA2, 24, 20, 1, 16, NIST}},
+
+	{"XMSS-SHAKE256_10_256", false, 0x00000010, Params{SHAKE256, 32, 10, 1, 16, RFC}},
+	{"XMSS-SHAKE256_16_256", false, 0x00000011, Params{SHAKE256, 32, 16, 1, 16, RFC}},
+	{"XMSS-SHAKE256_20_256", false, 0x00000012, Params{SHAKE256, 32, 20, 1, 16, RFC}},
+
+	{"XMSS-SHAKE256_10_192", false, 0x00000013, Params{SHAKE256, 24, 10, 1, 16, NIST}},
+	{"XMSS-SHAKE256_16_192", false, 0x00000014, Params{SHAKE256, 24, 16, 1, 16, NIST}},
+	{"XMSS-SHAKE256_20_192", false, 0x00000015, Params{SHAKE256, 24, 20, 1, 16, NIST}},
 }
 
 // Encodes parameters in the reserved Oid space as follows (big endian).
 //
 //    8-bit magic         should be 0xEA
-//    4-bit version       should be 0
+//    3-bit version       should be 0
+//    1-bit prf           0 for RFC and 1 for NIST
 //    4-bit compr-n       contains (n/8)-1 for the parameter n
 //    2-bit hash          the hash function
 //    2-bit w             0 for WotsW=4, 1 for WotsW=16, 2 for WotsW=256
@@ -118,13 +192,14 @@ func (params *Params) MarshalBinary() ([]byte, error) {
 func (params *Params) WriteInto(buf []byte) error {
 	var val uint32
 	var wCode uint32
+	var prfCode uint32
 	if params.N%8 != 0 {
 		return errorf("N is not divisable by 8")
 	}
 	if params.N > 128 {
 		return errorf("N is too large")
 	}
-	if params.Func > 1 {
+	if params.Func > 2 {
 		return errorf("Func is too large")
 	}
 	if params.FullHeight > 63 {
@@ -132,6 +207,14 @@ func (params *Params) WriteInto(buf []byte) error {
 	}
 	if params.D > 63 {
 		return errorf("D is too large")
+	}
+	switch params.Prf {
+	case RFC:
+		prfCode = 0
+	case NIST:
+		prfCode = 1
+	default:
+		return errorf("Unknown Prf")
 	}
 	switch params.WotsW {
 	case 4:
@@ -144,6 +227,7 @@ func (params *Params) WriteInto(buf []byte) error {
 		return errorf("Only WotsW=4,16,256 are supported")
 	}
 	val |= 0xea << 24 // magic
+	val |= prfCode << 20
 	val |= ((params.N / 8) - 1) << 16
 	val |= uint32(params.Func) << 14
 	val |= wCode << 12
@@ -163,12 +247,13 @@ func (params *Params) UnmarshalBinary(buf []byte) error {
 	if magic != 0xea {
 		return errorf("These are not compressed parameters (magic is wrong).")
 	}
-	version := (val >> 20) & ((1 << 4) - 1)
+	version := (val >> 21) & ((1 << 3) - 1)
 	if version != 0 {
 		return errorf("Unsupported compressed parameters version")
 	}
 	comprN := (val >> 16) & ((1 << 4) - 1)
 	wCode := (val >> 12) & ((1 << 2) - 1)
+	rfcCode := (val >> 20) & 1
 	switch wCode {
 	case 0:
 		params.WotsW = 4
@@ -178,6 +263,11 @@ func (params *Params) UnmarshalBinary(buf []byte) error {
 		params.WotsW = 256
 	default:
 		return errorf("Unsupported W-code in compressed parameters")
+	}
+	if rfcCode == 0 {
+		params.Prf = RFC
+	} else {
+		params.Prf = NIST
 	}
 	params.N = (comprN + 1) * 8
 	params.Func = HashFunc((val >> 14) & ((1 << 2) - 1))
@@ -260,12 +350,14 @@ func parseParamsFromName(name string) (*Params, Error) {
 		ret.Func = SHA2
 	case "SHAKE":
 		ret.Func = SHAKE
+	case "SHAKE256":
+		ret.Func = SHAKE256
 	default:
 		return nil, errorf("No such hash function: %s", bits[0])
 	}
 
-	if len(bits) < 3 || len(bits) > 4 {
-		return nil, errorf("Expected three or four parameters, not %d",
+	if len(bits) < 3 || len(bits) > 5 {
+		return nil, errorf("Expected three, four or five parameters, not %d",
 			len(bits))
 	}
 
@@ -310,14 +402,26 @@ func parseParamsFromName(name string) (*Params, Error) {
 	}
 	ret.N = uint32(n) / 8
 
-	if len(bits) >= 4 {
-		if len(bits[3]) < 2 {
-			return nil, errorf("Fourth parameter is too short")
+	if ret.N == 24 {
+		ret.Prf = NIST
+	}
+
+	ret.WotsW = 16
+	for i := 3; i < len(bits); i++ {
+		if bits[i] == "NIST" {
+			ret.Prf = NIST
+			continue
+		} else if bits[i] == "RFC" {
+			ret.Prf = RFC
+			continue
+		} else if len(bits[i]) < 2 {
+			return nil, errorf("Fourth or fifth parameter is too short")
 		}
-		if bits[3][0] != 'w' {
-			return nil, errorf("Expected 'w' for fourth parameter")
+		if bits[i][0] != 'w' {
+			return nil, errorf(
+				"Expected 'w[...]', NIST or RFC for fourth or fifth parameter")
 		}
-		w, err := strconv.Atoi(bits[3][1:])
+		w, err := strconv.Atoi(bits[i][1:])
 		if err != nil {
 			return nil, wrapErrorf(err, "Failed to parse WotsW parameter")
 		}
@@ -325,8 +429,6 @@ func parseParamsFromName(name string) (*Params, Error) {
 			return nil, errorf("WotsW out of bounds")
 		}
 		ret.WotsW = uint16(w)
-	} else {
-		ret.WotsW = 16
 	}
 
 	return &ret, nil
@@ -350,9 +452,12 @@ func ListNames2() (names []string) {
 		p.D = d
 		names = append(names, p.String())
 	}
-	for _, h := range []HashFunc{SHA2, SHAKE} {
+	for _, h := range []HashFunc{SHA2, SHAKE, SHAKE256} {
 		for _, w := range []uint16{4, 16, 256} {
-			for _, n := range []uint32{16, 32, 64} {
+			for _, n := range []uint32{16, 24, 32, 64} {
+				if h == SHAKE256 && (n == 64 || n == 16) {
+					continue
+				}
 				p.Func = h
 				p.WotsW = w
 				p.N = n
@@ -461,11 +566,27 @@ func (ctx *Context) Oid() uint32 {
 	return ctx.oid
 }
 
+// Returns whether this XMSS[MT] instance is listed in the NIST Special
+// Publication.
+func (ctx *Context) FromNIST() bool {
+	ctx.ensureNameAndOidAreSet()
+	if ctx.mt {
+		return ctx.oid >= 0x21 && ctx.oid <= 0x38
+	}
+	return ctx.oid >= 0xd && ctx.oid <= 0x15
+}
+
 // Returns whether this XMSS[MT] instance is listed in the RFC (and thus should
 // also be supported by other implementations).
 func (ctx *Context) FromRFC() bool {
 	ctx.ensureNameAndOidAreSet()
-	return ctx.oid != 0
+	if ctx.oid == 0 {
+		return false
+	}
+	if ctx.mt {
+		return ctx.oid <= 0x20
+	}
+	return ctx.oid <= 0xc
 }
 
 // Returns whether this is an XMSSMT instance (as opposed to XMSS)

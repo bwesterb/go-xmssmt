@@ -11,7 +11,7 @@ import (
 	"reflect"
 
 	"github.com/bwesterb/go-xmssmt/internal/f1600x4"
-	"github.com/templexxx/xor"
+	"github.com/templexxx/xorsimd"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -52,10 +52,11 @@ func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
 	ph precomputedHashes) {
 	ph.pubSeed = pubSeed
 	ph.skSeed = skSeed
-	if ctx.p.Func == SHA2 {
+	switch ctx.p.Func {
+	case SHA2:
 		var hPrfSk, hPrfPub hash.Hash
 		switch ctx.p.N {
-		case 16, 32:
+		case 16, 24, 32:
 			hPrfSk = sha256.New()
 			hPrfPub = sha256.New()
 		case 64:
@@ -64,11 +65,11 @@ func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
 		}
 
 		if skSeed != nil {
-			hPrfSk.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.p.N)))
+			hPrfSk.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.prefixLen)))
 			hPrfSk.Write(skSeed)
 		}
 
-		hPrfPub.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.p.N)))
+		hPrfPub.Write(encodeUint64(HASH_PADDING_PRF, int(ctx.prefixLen)))
 		hPrfPub.Write(pubSeed)
 
 		// This might break if sha{256,512}.digest is changed in the future,
@@ -84,9 +85,14 @@ func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
 			addr.writeInto(addrBuf)
 			pad.hash.h.Write(addrBuf)
 
-			// hash.Sum append()s the hash to the input byte slice.  As our
-			// input byte slice has enough capacity, it will write it in out.
-			pad.hash.h.Sum(out[:0])
+			if ctx.p.N >= 32 {
+				// hash.Sum append()s the hash to the input byte slice.  As our
+				// input byte slice has enough capacity, it will write it in out.
+				pad.hash.h.Sum(out[:0])
+			} else {
+				pad.hash.h.Sum(addrBuf[:0])
+				copy(out[:], addrBuf[:ctx.p.N])
+			}
 		}
 
 		if skSeed == nil {
@@ -98,16 +104,21 @@ func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
 			addrBuf := pad.prfAddrBuf()
 			addr.writeInto(addrBuf)
 			pad.hash.h.Write(addrBuf)
-			pad.hash.h.Sum(out[:0]) // see above
+			if ctx.p.N >= 32 {
+				pad.hash.h.Sum(out[:0]) // see above
+			} else {
+				pad.hash.h.Sum(addrBuf[:0])
+				copy(out[:], addrBuf[:ctx.p.N])
+			}
 		}
-	} else { // SHAKE
+	case SHAKE, SHAKE256:
 		// The rates of Shake128 and Shake256 are so high (136 resp. 168)
 		// that precomputing does not have merit.
 		ph.prfAddrPubSeedInto = func(pad scratchPad, addr address, out []byte) {
 			h := pad.hash.shake
 			addrBuf := pad.prfAddrBuf()
 			h.Reset()
-			prefBuf := pad.prfBuf()[:ctx.p.N]
+			prefBuf := pad.prfBuf()[:ctx.prefixLen]
 			encodeUint64Into(HASH_PADDING_PRF, prefBuf)
 			addr.writeInto(addrBuf)
 			h.Write(prefBuf)
@@ -124,7 +135,7 @@ func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
 			h := pad.hash.shake
 			addrBuf := pad.prfAddrBuf()
 			h.Reset()
-			prefBuf := pad.prfBuf()[:ctx.p.N]
+			prefBuf := pad.prfBuf()[:ctx.prefixLen]
 			encodeUint64Into(HASH_PADDING_PRF, prefBuf)
 			addr.writeInto(addrBuf)
 			h.Write(prefBuf)
@@ -132,25 +143,25 @@ func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
 			h.Write(addrBuf)
 			h.Read(out[:pad.n])
 		}
+	default:
+		panic("not implemented")
 	}
 	return
 }
 
 // Compute the hash of in.  out must be a n-byte slice.
 func (ctx *Context) hashInto(pad scratchPad, in, out []byte) {
-	if ctx.p.Func == SHA2 {
+	switch ctx.p.Func {
+	case SHA2:
 		switch ctx.p.N {
-		case 16:
+		case 16, 24, 32:
 			ret := sha256.Sum256(in)
-			copy(out, ret[:16])
-		case 32:
-			ret := sha256.Sum256(in)
-			copy(out, ret[:])
+			copy(out, ret[:ctx.p.N])
 		case 64:
 			ret := sha512.Sum512(in)
 			copy(out, ret[:])
 		}
-	} else { // SHAKE
+	case SHAKE, SHAKE256:
 		h := pad.hash.shake
 		h.Reset()
 		h.Write(in)
@@ -161,12 +172,13 @@ func (ctx *Context) hashInto(pad scratchPad, in, out []byte) {
 func (ctx *Context) prfKeyGenInto(pad scratchPad, ph precomputedHashes,
 	addr address, out []byte) {
 	n := ctx.p.N
+	pl := ctx.prefixLen
 	buf := pad.prfKeyGenBuf()
-	encodeUint64Into(HASH_PADDING_PRF_KEYGEN, buf[:n])
-	copy(buf[n:2*n], ph.skSeed)
-	copy(buf[2*n:3*n], ph.pubSeed)
-	addr.writeInto(buf[3*n : 3*n+32])
-	ctx.hashInto(pad, buf, out)
+	encodeUint64Into(HASH_PADDING_PRF_KEYGEN, buf[:pl])
+	copy(buf[pl:pl+n], ph.skSeed)
+	copy(buf[pl+n:pl+2*n], ph.pubSeed)
+	addr.writeInto(buf[pl+2*n : pl+2*n+32])
+	ctx.hashInto(pad, buf[:pl+2*n+32], out)
 }
 
 // Compute PRF(key, i)
@@ -179,10 +191,12 @@ func (ctx *Context) prfUint64(pad scratchPad, i uint64, key []byte) []byte {
 // Compute PRF(key, i)
 func (ctx *Context) prfUint64Into(pad scratchPad, i uint64, key, out []byte) {
 	buf := pad.prfBuf()
-	encodeUint64Into(HASH_PADDING_PRF, buf[:ctx.p.N])
-	copy(buf[ctx.p.N:], key)
-	encodeUint64Into(i, buf[ctx.p.N*2:])
-	ctx.hashInto(pad, buf, out)
+	pl := ctx.prefixLen
+	n := ctx.p.N
+	encodeUint64Into(HASH_PADDING_PRF, buf[:pl])
+	copy(buf[pl:pl+n], key)
+	encodeUint64Into(i, buf[n+pl:n+pl+32])
+	ctx.hashInto(pad, buf[:n+pl+32], out)
 }
 
 // Compute PRF(key, addr)
@@ -195,10 +209,12 @@ func (ctx *Context) prfAddr(pad scratchPad, addr address, key []byte) []byte {
 // Compute PRF(key, addr) and store into out
 func (ctx *Context) prfAddrInto(pad scratchPad, addr address, key, out []byte) {
 	buf := pad.prfBuf()
-	encodeUint64Into(HASH_PADDING_PRF, buf[:ctx.p.N])
-	copy(buf[ctx.p.N:], key)
-	addr.writeInto(buf[ctx.p.N*2:])
-	ctx.hashInto(pad, buf, out)
+	pl := ctx.prefixLen
+	n := ctx.p.N
+	encodeUint64Into(HASH_PADDING_PRF, buf[:pl])
+	copy(buf[pl:pl+n], key)
+	addr.writeInto(buf[n+pl : n+pl+32])
+	ctx.hashInto(pad, buf[:n+pl+32], out)
 }
 
 // Set out[i] = PRF(key, addr[i]) for i=0,1,2,3.
@@ -296,20 +312,21 @@ func (ctx *Context) hashMessageInto(pad scratchPad, msg io.Reader,
 	R, root []byte, idx uint64, out []byte) error {
 
 	var h io.Writer
-	if ctx.p.Func == SHA2 {
+	switch ctx.p.Func {
+	case SHA2:
 		switch ctx.p.N {
-		case 16, 32:
+		case 16, 24, 32:
 			h = sha256.New()
 		case 64:
 			h = sha512.New()
 		}
-	} else { // SHAKE
+	case SHAKE, SHAKE256:
 		h2 := pad.hash.shake
 		h2.Reset()
 		h = h2
 	}
 
-	h.Write(encodeUint64(HASH_PADDING_HASH, int(ctx.p.N)))
+	h.Write(encodeUint64(HASH_PADDING_HASH, int(ctx.prefixLen)))
 	h.Write(R)
 	h.Write(root)
 	h.Write(encodeUint64(idx, int(ctx.p.N)))
@@ -319,9 +336,16 @@ func (ctx *Context) hashMessageInto(pad scratchPad, msg io.Reader,
 		return err
 	}
 
-	if ctx.p.Func == SHA2 {
-		(h.(hash.Hash)).Sum(out[:0])
-	} else { // SHAKE
+	switch ctx.p.Func {
+	case SHA2:
+		if ctx.p.N >= 32 {
+			(h.(hash.Hash)).Sum(out[:0])
+		} else {
+			var buf [32]byte
+			(h.(hash.Hash)).Sum(buf[:0])
+			copy(out[:], buf[:ctx.p.N])
+		}
+	case SHAKE, SHAKE256:
 		(h.(io.Reader)).Read(out)
 	}
 
@@ -431,13 +455,15 @@ func (ctx *Context) fX4Into(pad scratchPad, in [4][]byte, key []byte,
 func (ctx *Context) fInto(pad scratchPad, in []byte, ph precomputedHashes,
 	addr address, out []byte) {
 	buf := pad.fBuf()
-	encodeUint64Into(HASH_PADDING_F, buf[:ctx.p.N])
+	n := ctx.p.N
+	pl := ctx.prefixLen
+	encodeUint64Into(HASH_PADDING_F, buf[:pl])
 	addr.setKeyAndMask(0)
-	ph.prfAddrPubSeedInto(pad, addr, buf[ctx.p.N:ctx.p.N*2])
+	ph.prfAddrPubSeedInto(pad, addr, buf[pl:pl+n])
 	addr.setKeyAndMask(1)
-	ph.prfAddrPubSeedInto(pad, addr, buf[2*ctx.p.N:])
-	xor.BytesSameLen(buf[2*ctx.p.N:], in, buf[2*ctx.p.N:])
-	ctx.hashInto(pad, buf, out)
+	ph.prfAddrPubSeedInto(pad, addr, buf[pl+n:pl+2*n])
+	xorsimd.Bytes(buf[pl+n:pl+2*n], in, buf[pl+n:pl+2*n])
+	ctx.hashInto(pad, buf[:pl+2*n], out)
 }
 
 // Compute RAND_HASH used to hash up various trees
@@ -452,30 +478,33 @@ func (ctx *Context) h(left, right, pubSeed []byte, addr address) []byte {
 func (ctx *Context) hInto(pad scratchPad, left, right []byte,
 	ph precomputedHashes, addr address, out []byte) {
 	buf := pad.hBuf()
-	encodeUint64Into(HASH_PADDING_H, buf[:ctx.p.N])
+	n := ctx.p.N
+	pl := ctx.prefixLen
+	encodeUint64Into(HASH_PADDING_H, buf[:pl])
 	addr.setKeyAndMask(0)
-	ph.prfAddrPubSeedInto(pad, addr, buf[ctx.p.N:ctx.p.N*2])
+	ph.prfAddrPubSeedInto(pad, addr, buf[pl:pl+n])
 	addr.setKeyAndMask(1)
-	ph.prfAddrPubSeedInto(pad, addr, buf[2*ctx.p.N:3*ctx.p.N])
+	ph.prfAddrPubSeedInto(pad, addr, buf[pl+n:pl+2*n])
 	addr.setKeyAndMask(2)
-	ph.prfAddrPubSeedInto(pad, addr, buf[3*ctx.p.N:])
-	xor.BytesSameLen(buf[2*ctx.p.N:3*ctx.p.N], left, buf[2*ctx.p.N:3*ctx.p.N])
-	xor.BytesSameLen(buf[3*ctx.p.N:], right, buf[3*ctx.p.N:])
-	ctx.hashInto(pad, buf, out)
+	ph.prfAddrPubSeedInto(pad, addr, buf[2*n+pl:3*n+pl])
+	xorsimd.Bytes(buf[pl+n:pl+2*n], left, buf[pl+n:pl+2*n])
+	xorsimd.Bytes(buf[pl+2*n:pl+3*n], right, buf[pl+2*n:pl+3*n])
+	ctx.hashInto(pad, buf[:pl+3*n], out)
 }
 
 func (ctx *Context) newHashScratchPad() (pad hashScratchPad) {
-	if ctx.p.Func == SHA2 {
+	switch ctx.p.Func {
+	case SHA2:
 		switch ctx.p.N {
-		case 16, 32:
+		case 16, 24, 32:
 			pad.h = sha256.New()
 		case 64:
 			pad.h = sha512.New()
 		}
 		pad.hV = reflect.ValueOf(pad.h).Elem()
-	} else { // SHAKE
+	case SHAKE:
 		switch ctx.p.N {
-		case 16, 32:
+		case 16, 24, 32:
 			pad.shake = sha3.NewShake128()
 			if f1600x4.Available {
 				pad.shakeX4 = new(f1600x4.State)
@@ -484,6 +513,10 @@ func (ctx *Context) newHashScratchPad() (pad hashScratchPad) {
 		case 64:
 			pad.shake = sha3.NewShake256()
 		}
+	case SHAKE256:
+		pad.shake = sha3.NewShake256()
+	default:
+		panic("Not implemented")
 	}
 	return
 }

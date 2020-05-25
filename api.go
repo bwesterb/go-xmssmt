@@ -35,6 +35,7 @@ type Context struct {
 	sigBytes     uint32 // size of signature
 	pkBytes      uint32 // size of public key
 	skBytes      uint32 // size of secret key
+	prefixLen    uint32 // length of PRF prefix
 
 	x4Available bool // whether fourway hashes are available
 
@@ -652,8 +653,8 @@ func NewContext(params Params) (ctx *Context, err Error) {
 	ctx.p = params
 	ctx.mt = (ctx.p.D > 1)
 
-	if ctx.p.N != 16 && ctx.p.N != 32 && ctx.p.N != 64 {
-		return nil, errorf("Only N=16,32,64 are supported")
+	if ctx.p.N != 16 && ctx.p.N != 24 && ctx.p.N != 32 && ctx.p.N != 64 {
+		return nil, errorf("Only N=16,24,32,64 are supported")
 	}
 
 	if params.D == 0 {
@@ -685,8 +686,13 @@ func NewContext(params Params) (ctx *Context, err Error) {
 		params.D*ctx.wotsSigBytes + params.FullHeight*params.N)
 	ctx.pkBytes = 2 * params.N
 	ctx.skBytes = ctx.indexBytes + 4*params.N
+	ctx.prefixLen = params.N
 
-	if ctx.p.Func == SHAKE && ctx.p.N != 64 {
+	if params.Prf == NIST {
+		ctx.prefixLen = 4
+	}
+
+	if ctx.p.Func == SHAKE && (ctx.p.N == 32 || ctx.p.N == 16) {
 		ctx.x4Available = f1600x4.Available
 	}
 
