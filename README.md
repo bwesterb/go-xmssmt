@@ -5,6 +5,10 @@ This is a Go implementation of the stateful hash-based signature-scheme
 XMSS(MT) described in [rfc8391 (XMSS: Extended Hash-Based Signatures)](
 https://tools.ietf.org/html/rfc8391) and [NIST SP 800-208](https://csrc.nist.gov/publications/detail/sp/800-208/draft).
 
+There is also a [convenient commandline tool](https://github.com/bwesterb/xmssmt).
+**Warning**, XMSS(MT) is **stateful**, that means you should never backup your
+private key or make a copy of it.   See the [README of cli tool](https://github.com/bwesterb/xmssmt#state).
+
 ```go
 package main
 
