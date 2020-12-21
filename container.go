@@ -83,6 +83,11 @@ type PrivateKeyContainer interface {
 	Close() Error
 }
 
+type mmapedSubTree struct {
+	mmap mmap.MMap
+	buf  []byte
+}
+
 // PrivateKeyContainer backed by three files:
 //
 //   path/to/key        contains the secret key and signature sequence number
@@ -108,9 +113,10 @@ type fsContainer struct {
 	// maps subtree address to the index of the subtree in the cache
 	cacheIdxLut map[SubTreeAddress]uint32
 	// maps subtree address to an mmaped buffer
-	cacheBufLut  map[SubTreeAddress]mmap.MMap
-	cacheFreeIdx *uint32Heap // list of allocated but unused subtrees
-
+	cacheBufLut      map[SubTreeAddress]mmapedSubTree
+	cacheFreeIdx     *uint32Heap // list of allocated but unused subtrees
+	subTreeAlignment int         // multiple to which subtrees are aligned
+	pageSize         int
 }
 
 const (
@@ -118,7 +124,8 @@ const (
 	FS_CONTAINER_KEY_MAGIC = "4089430a5ced6844"
 
 	// First 8 bytes (in hex) of the subtree cache file
-	FS_CONTAINER_CACHE_MAGIC = "e77957607ef79446"
+	FS_CONTAINER_CACHE_MAGIC  = "e77957607ef79446"
+	FS_CONTAINER_CACHE_MAGIC2 = "5a11d7cf4a1f6314"
 )
 
 // Returns a PrivateKeyContainer backed by the filesystem.
@@ -189,7 +196,7 @@ func (ctr *fsContainer) openCache() Error {
 	var err error
 
 	ctr.cacheIdxLut = make(map[SubTreeAddress]uint32)
-	ctr.cacheBufLut = make(map[SubTreeAddress]mmap.MMap)
+	ctr.cacheBufLut = make(map[SubTreeAddress]mmapedSubTree)
 	emptyHeap := uint32Heap([]uint32{})
 	ctr.cacheFreeIdx = &emptyHeap
 	heap.Init(ctr.cacheFreeIdx)
@@ -208,10 +215,27 @@ func (ctr *fsContainer) openCache() Error {
 		return wrapErrorf(err, "Failed to read cache file header")
 	}
 
-	if FS_CONTAINER_CACHE_MAGIC != hex.EncodeToString(header.Magic[:]) {
+	magic := hex.EncodeToString(header.Magic[:])
+	if magic != FS_CONTAINER_CACHE_MAGIC && magic != FS_CONTAINER_CACHE_MAGIC2 {
 		return wrapErrorf(err, "Cache file magic is wrong")
 	}
 
+	if magic == FS_CONTAINER_CACHE_MAGIC {
+		if header.Version != 0 {
+			return wrapErrorf(err, "Cache file version does not match magic")
+		}
+
+		ctr.subTreeAlignment = 4096
+	} else {
+		if header.Version != 1 {
+			return wrapErrorf(err, "Unsupported cache file version: %d",
+				header.Version)
+		}
+
+		ctr.subTreeAlignment = int(header.SubTreeAlignment)
+	}
+
+	ctr.pageSize = os.Getpagesize()
 	ctr.allocatedSubTrees = header.AllocatedSubTrees
 
 	// Read subtrees
@@ -250,8 +274,23 @@ type fsKeyHeader struct {
 
 // Header of the cache file
 type fsCacheHeader struct {
-	Magic             [8]byte // Should be FS_CONTAINER_CACHE_MAGIC
-	AllocatedSubTrees uint32  // Number of allocated subtrees
+	// Magic should be FS_CONTAINER_CACHE_MAGIC for version 0
+	// or FS_CONTAINER_CACHE_MAGIC2 for version ≥1.
+	Magic             [8]byte
+	AllocatedSubTrees uint32 // Number of allocated subtrees
+
+	// The following fields are nonzero for format version ≥1.
+
+	// Version of the cache format.
+	//
+	//   0 Original with magic FS_CONTAINER_CACHE_MAGIC2
+	//   1 Second version which includes subtree alignment.
+	//     Has magic FS_CONTAINER_CACHE_MAGIC2.
+	Version uint8
+
+	// Multiple to which subtrees are aligned.  Zero is interpreted
+	// as 4096.
+	SubTreeAlignment uint32
 }
 
 // Header of a cached subtree
@@ -285,8 +324,13 @@ func (ctr *fsContainer) ResetCache() Error {
 	if ctr.cacheInitialized {
 		ctr.closeCache() // we ignore munmap failures
 	}
-	ctr.cacheBufLut = make(map[SubTreeAddress]mmap.MMap)
+	ctr.cacheBufLut = make(map[SubTreeAddress]mmapedSubTree)
 	ctr.cacheIdxLut = make(map[SubTreeAddress]uint32)
+	ctr.pageSize = os.Getpagesize()
+	ctr.subTreeAlignment = ctr.pageSize
+	if ctr.subTreeAlignment < 4096 {
+		ctr.subTreeAlignment = 4096
+	}
 	ctr.allocatedSubTrees = 0
 	emptyHeap := uint32Heap([]uint32{})
 	ctr.cacheFreeIdx = &emptyHeap
@@ -318,8 +362,10 @@ func (ctr *fsContainer) writeCacheHeader() Error {
 	}
 	cacheHeader := fsCacheHeader{
 		AllocatedSubTrees: ctr.allocatedSubTrees,
+		Version:           1,
+		SubTreeAlignment:  uint32(ctr.subTreeAlignment),
 	}
-	magic, _ := hex.DecodeString(FS_CONTAINER_CACHE_MAGIC)
+	magic, _ := hex.DecodeString(FS_CONTAINER_CACHE_MAGIC2)
 	copy(cacheHeader.Magic[:], magic)
 	err = binary.Write(ctr.cacheFile, binary.BigEndian, &cacheHeader)
 	if err != nil {
@@ -332,25 +378,37 @@ func (ctr *fsContainer) writeCacheHeader() Error {
 // Returns the offset of the given cached subtree entry in the cache file.
 // This offset point to the 13-byte header just in front of the actual data.
 func (ctr *fsContainer) subTreeOffset(idx uint32) int {
-	// Find the smallest multiple of 4096  above CachedSubTreeSize() + 13,
-	// where 13 is the size of fsSubTreeHeader
-	var mask uint64 = ((1 << (64 - 12)) - 1) << 12 // 0xff...ff000
-	paddedSize := (((ctr.params.CachedSubTreeSize() + 13) - 1) & int(mask)) + 4096
-	return int(idx)*paddedSize + 4096
+	// Find the smallest multiple of ctr.subTreeAlignment
+	// above CachedSubTreeSize() + 13,  where 13 is the size of fsSubTreeHeader.
+	paddedSize := ((((ctr.params.CachedSubTreeSize() + 13) - 1) /
+		ctr.subTreeAlignment) + 1) * ctr.subTreeAlignment
+	return int(idx)*paddedSize + ctr.subTreeAlignment
 }
 
-func (ctr *fsContainer) mmapSubTree(idx uint32) ([]byte, error) {
+func (ctr *fsContainer) mmapSubTree(idx uint32) (mmapedSubTree, error) {
+	realOffset := ctr.subTreeOffset(idx)
+	offset := realOffset % ctr.pageSize
+
 	buf, err := mmap.MapRegion(
 		ctr.cacheFile,
-		ctr.params.CachedSubTreeSize()+13, // length
-		mmap.RDWR,                         // prot
-		0,                                 // flags
-		int64(ctr.subTreeOffset(idx)))
-	return buf, err
+		ctr.params.CachedSubTreeSize()+13+offset, // length
+		mmap.RDWR, // prot
+		0,         // flags
+		int64(realOffset-offset),
+	)
+
+	if err != nil {
+		return mmapedSubTree{}, err
+	}
+
+	return mmapedSubTree{
+		mmap: buf,
+		buf:  buf[offset:],
+	}, nil
 }
 
 func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
-	buf []byte, exists bool, err Error) {
+	ret []byte, exists bool, err Error) {
 	if !ctr.cacheInitialized {
 		err = errorf("Cache is not initialized")
 		return nil, false, err
@@ -359,17 +417,17 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 	var err2 error
 
 	if buf, ok := ctr.cacheBufLut[address]; ok {
-		return []byte(buf)[13:], true, nil
+		return []byte(buf.buf)[13:], true, nil
 	}
 
 	// Check if the subtree exists
 	if idx, ok := ctr.cacheIdxLut[address]; ok {
-		buf, err2 = ctr.mmapSubTree(idx)
+		buf, err2 := ctr.mmapSubTree(idx)
 		if err2 != nil {
 			return nil, false, wrapErrorf(err2, "Failed to mmap subtree")
 		}
 		ctr.cacheBufLut[address] = buf
-		return []byte(buf)[13:], true, nil
+		return []byte(buf.buf)[13:], true, nil
 	}
 
 	// Find a free cached subtree index
@@ -391,7 +449,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 		}
 	}
 
-	buf, err2 = ctr.mmapSubTree(idx)
+	buf, err2 := ctr.mmapSubTree(idx)
 	if err2 != nil {
 		return nil, false, wrapErrorf(err2, "Failed to mmap subtree from cache")
 	}
@@ -401,7 +459,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 		Allocated: 1,
 		Address:   address,
 	}
-	bufWriter := byteswriter.NewWriter([]byte(buf))
+	bufWriter := byteswriter.NewWriter(buf.buf)
 	err2 = binary.Write(bufWriter, binary.BigEndian, &header)
 	if err2 != nil {
 		err = wrapErrorf(err2, "Failed to write subtree header in cache")
@@ -411,7 +469,7 @@ func (ctr *fsContainer) GetSubTree(address SubTreeAddress) (
 	ctr.cacheBufLut[address] = buf
 	ctr.cacheIdxLut[address] = idx
 
-	return []byte(buf)[13:], false, nil
+	return buf.buf[13:], false, nil
 }
 
 func (ctr *fsContainer) ListSubTrees() ([]SubTreeAddress, Error) {
@@ -460,7 +518,7 @@ func (ctr *fsContainer) DropSubTree(address SubTreeAddress) Error {
 		return wrapErrorf(err2, "Failed to mmap subtree from cache")
 	}
 
-	bufWriter := byteswriter.NewWriter(buf)
+	bufWriter := byteswriter.NewWriter(buf.buf)
 	var bFalse uint8 = 0
 	err2 = binary.Write(bufWriter, binary.BigEndian, &bFalse)
 	if err2 != nil {
@@ -471,7 +529,7 @@ func (ctr *fsContainer) DropSubTree(address SubTreeAddress) Error {
 	delete(ctr.cacheIdxLut, address)
 	delete(ctr.cacheBufLut, address)
 
-	err2 = buf.Unmap()
+	err2 = buf.mmap.Unmap()
 	if err2 != nil {
 		return wrapErrorf(err2, "Failed to unmap sub tree")
 	}
@@ -638,7 +696,7 @@ func (ctr *fsContainer) closeCache() (err error) {
 	ctr.cacheInitialized = false
 	if ctr.cacheBufLut != nil {
 		for _, buf := range ctr.cacheBufLut {
-			if err2 := buf.Unmap(); err2 != nil {
+			if err2 := buf.mmap.Unmap(); err2 != nil {
 				err = multierror.Append(err, wrapErrorf(err2,
 					"Failed to unmap cached subtree"))
 			}

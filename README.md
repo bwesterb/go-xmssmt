@@ -76,6 +76,9 @@ by the RFC by checking `Context.FromRFC()` and `Context.FromNIST()`.
 Changes
 -------
 
+### 1.4.3 (21-12-2020)
+- Support systems with pagesizes different from 4096.
+
 ### 1.4.0 (25-05-2020)
 
 - The way the private key is generated has been changed in the same
