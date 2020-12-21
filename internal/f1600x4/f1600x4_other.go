@@ -22,3 +22,8 @@ func (s *State) Initialize() []uint64 {
 func (s *State) Permute() {
 	panic("Not available")
 }
+
+// Zeroes internal buffer.
+func (s *State) Zero() {
+	panic("Not available")
+}
