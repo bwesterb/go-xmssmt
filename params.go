@@ -506,11 +506,14 @@ func (params *Params) WotsLen1() uint32 {
 func (params *Params) WotsLen2() uint32 {
 	switch params.WotsW {
 	case 4:
-		return 2
+		if params.N == 16 {
+			return 4
+		}
+		return 5
 	case 16:
 		return 3
 	case 256:
-		return 5
+		return 2
 	default:
 		panic("Only WotsW=4,16,256 are supported")
 	}

@@ -76,6 +76,14 @@ by the RFC by checking `Context.FromRFC()` and `Context.FromNIST()`.
 Changes
 -------
 
+### 1.5.0 (22-06-2021)
+- Fixed a big issue with non-standard instances with w≠16:
+  for w=256 too many checksum chains were included and with w=4
+  too few.  In both cases this means signatures would not be
+  compatible with proper implementations.
+  In the case of w=4, signatures could be forged.
+  This breaks compatibility for non-standard instances with w≠16.
+
 ### 1.4.3 (21-12-2020)
 - Support systems with pagesizes different from 4096.
 
