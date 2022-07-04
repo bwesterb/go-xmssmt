@@ -372,7 +372,7 @@ func parseParamsFromName(name string) (*Params, Error) {
 		if err != nil {
 			return nil, wrapErrorf(err, "Can't parse D")
 		}
-		if d < 0 || d >= 1<<32 {
+		if d < 0 || int64(d) >= int64(1)<<32 {
 			return nil, errorf("D out of bounds")
 		}
 		ret.D = uint32(d)
@@ -388,7 +388,7 @@ func parseParamsFromName(name string) (*Params, Error) {
 	if err != nil {
 		return nil, wrapErrorf(err, "Can't parse FullHeight")
 	}
-	if fh < 0 || fh >= 1<<32 {
+	if fh < 0 || int64(fh) >= int64(1)<<32 {
 		return nil, errorf("FullHeight out of bounds")
 	}
 	ret.FullHeight = uint32(fh)
@@ -397,7 +397,7 @@ func parseParamsFromName(name string) (*Params, Error) {
 	if err != nil {
 		return nil, wrapErrorf(err, "parse N")
 	}
-	if n < 0 || n > 1<<32 {
+	if n < 0 || int64(n) > int64(1)<<32 {
 		return nil, errorf("N out of bounds")
 	}
 	ret.N = uint32(n) / 8
