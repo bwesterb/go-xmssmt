@@ -76,6 +76,10 @@ by the RFC by checking `Context.FromRFC()` and `Context.FromNIST()`.
 Changes
 -------
 
+### 1.5.2 (5-7-2022)
+- Fix build problems on 32-bit platforms. Thanks @sietseringers.
+- Update dependencies
+
 ### 1.5.0 (22-06-2021)
 - Fixed a big issue with non-standard instances with w≠16:
   for w=256 too many checksum chains were included and with w=4
