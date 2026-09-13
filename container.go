@@ -116,7 +116,7 @@ type fsContainer struct {
 	cacheBufLut      map[SubTreeAddress]mmapedSubTree
 	cacheFreeIdx     *uint32Heap // list of allocated but unused subtrees
 	subTreeAlignment int         // multiple to which subtrees are aligned
-	pageSize         int
+	pageSize         int         // multiple to which mmap offsets are aligned
 }
 
 const (
@@ -235,7 +235,7 @@ func (ctr *fsContainer) openCache() Error {
 		ctr.subTreeAlignment = int(header.SubTreeAlignment)
 	}
 
-	ctr.pageSize = os.Getpagesize()
+	ctr.pageSize = mmapGranularity()
 	ctr.allocatedSubTrees = header.AllocatedSubTrees
 
 	// Read subtrees
@@ -326,8 +326,8 @@ func (ctr *fsContainer) ResetCache() Error {
 	}
 	ctr.cacheBufLut = make(map[SubTreeAddress]mmapedSubTree)
 	ctr.cacheIdxLut = make(map[SubTreeAddress]uint32)
-	ctr.pageSize = os.Getpagesize()
-	ctr.subTreeAlignment = ctr.pageSize
+	ctr.pageSize = mmapGranularity()
+	ctr.subTreeAlignment = os.Getpagesize()
 	if ctr.subTreeAlignment < 4096 {
 		ctr.subTreeAlignment = 4096
 	}
