@@ -629,27 +629,12 @@ func (ctr *fsContainer) writeKeyFile() Error {
 		return wrapErrorf(err, "failed to close temporary key file")
 	}
 
-	// (3) Rename the tempfile
-	if err = os.Rename(tmpPath, ctr.path); err != nil {
+	// (3) Rename the tempfile over the key file, durably.  If this fails we
+	// have no way of knowing whether the changes have been written out to
+	// disk.  We will assume that they were not, so that we won't reuse
+	// signatures.
+	if err = renameDurably(tmpPath, ctr.path); err != nil {
 		return wrapErrorf(err, "failed to replace key file")
-	}
-
-	// (4) Sync the parent directory.  If this fails we have no way of knowing
-	// whether  the changes have been written out to disk.  We will assume that
-	// it did not, so that we won't reuse signatures.
-	dirName := filepath.Dir(ctr.path)
-	dir, err := os.Open(dirName)
-	if err != nil {
-		return wrapErrorf(err, "failed to sync key file: open(%s):", dirName)
-	}
-
-	if err = dir.Sync(); err != nil {
-		dir.Close()
-		return wrapErrorf(err, "failed to sync key file")
-	}
-
-	if err = dir.Close(); err != nil {
-		return wrapErrorf(err, "failed to sync key file (close)")
 	}
 
 	return nil
