@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"testing"
-
-	"github.com/bwesterb/go-xmssmt/internal/f1600x4"
 )
 
 func testHashMessage(ctx *Context, expect string, t *testing.T) {
@@ -35,16 +33,24 @@ func TestHashMessage(t *testing.T) {
 	testHashMessage(NewContextFromOid(false, 10), "2ed0d21c1180d9bd82a5542f3ccf9c5b1eee8f88e60ff0fdbe01a784d456de7a3546074b8fbc03904bc4eb4cc45ae64f3e5f2e1dcf02d4d7b68719cefe19dafa", t)
 }
 
-func TestFX4(t *testing.T) {
-	if !f1600x4.Available {
-		t.Skip()
-	}
-	testFX4(t, 16)
-	testFX4(t, 32)
+// Returns a SHAKE context forced to use the given number of parallel lanes.
+// Circl falls back to a scalar implementation when the SIMD one is not
+// available, so this exercises the vectorized code paths on every platform.
+func newContextWithWays(N, ways uint32) *Context {
+	ctx, _ := NewContext(Params{Func: SHAKE, N: N, WotsW: 256, FullHeight: 1, D: 1})
+	ctx.ways = ways
+	return ctx
 }
 
-func testFX4(t *testing.T, N uint32) {
-	ctx, _ := NewContext(Params{Func: SHAKE, N: N, WotsW: 256, FullHeight: 1, D: 1})
+func TestFX(t *testing.T) {
+	for _, ways := range []uint32{2, 4} {
+		testFX(t, 16, ways)
+		testFX(t, 32, ways)
+	}
+}
+
+func testFX(t *testing.T, N, ways uint32) {
+	ctx := newContextWithWays(N, ways)
 	var addr [4]address
 	var buf1 [4][]byte
 	var in [4][]byte
@@ -64,26 +70,25 @@ func testFX4(t *testing.T, N uint32) {
 		key[i] = byte(i)
 	}
 	pad := ctx.newScratchPad()
-	ctx.fX4Into(pad, in, key, addr, buf1)
+	ctx.fXInto(pad, in, key, addr, buf1)
 	ph := ctx.precomputeHashes(key, key)
-	for j := 0; j < 4; j++ {
+	for j := uint32(0); j < ways; j++ {
 		ctx.fInto(pad, in[j], ph, addr[j], buf2)
 		if !bytes.Equal(buf2, buf1[j]) {
-			t.Fatal()
+			t.Fatalf("N=%d ways=%d lane %d differs", N, ways, j)
 		}
 	}
 }
 
-func TestPrfX4(t *testing.T) {
-	if !f1600x4.Available {
-		t.Skip()
+func TestPrfX(t *testing.T) {
+	for _, ways := range []uint32{2, 4} {
+		testPrfX(t, 16, ways)
+		testPrfX(t, 32, ways)
 	}
-	testPrfX4(t, 16)
-	testPrfX4(t, 32)
 }
 
-func testPrfX4(t *testing.T, N uint32) {
-	ctx, _ := NewContext(Params{Func: SHAKE, N: N, WotsW: 256, FullHeight: 1, D: 1})
+func testPrfX(t *testing.T, N, ways uint32) {
+	ctx := newContextWithWays(N, ways)
 	var addr [4]address
 	var buf1 [4][]byte
 	buf2 := make([]byte, ctx.p.N)
@@ -98,11 +103,11 @@ func testPrfX4(t *testing.T, N uint32) {
 		key[i] = byte(i)
 	}
 	pad := ctx.newScratchPad()
-	ctx.prfAddrX4Into(pad, addr, key, buf1)
-	for j := 0; j < 4; j++ {
+	ctx.prfAddrXInto(pad, addr, key, buf1)
+	for j := uint32(0); j < ways; j++ {
 		ctx.prfAddrInto(pad, addr[j], key, buf2)
 		if !bytes.Equal(buf2, buf1[j]) {
-			t.Fatal()
+			t.Fatalf("N=%d ways=%d lane %d differs", N, ways, j)
 		}
 	}
 }
@@ -183,8 +188,11 @@ func TestH(t *testing.T) {
 	testH(NewContextFromOid(false, 10), "2516532c0ee77300a2e15bd6f1da565740302ab48105503ad1bf05305ed9247da9544b97acfe4790150157f937d8aa3f8deef1447295b8640c8cff0c4d4c006f", t)
 }
 
-func BenchmarkPrfAddX4(b *testing.B) {
+func BenchmarkPrfAddX(b *testing.B) {
 	ctx, _ := NewContext(Params{Func: SHAKE, N: 16, WotsW: 16, FullHeight: 1, D: 1})
+	if ctx.ways == 0 {
+		b.Skip("no parallel SHAKE on this platform")
+	}
 	var addr [4]address
 	var buf1 [4][]byte
 	var key []byte = make([]byte, ctx.p.N)
@@ -201,7 +209,7 @@ func BenchmarkPrfAddX4(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < 1000; k++ {
-			ctx.prfAddrX4Into(pad, addr, key, buf1)
+			ctx.prfAddrXInto(pad, addr, key, buf1)
 		}
 	}
 }

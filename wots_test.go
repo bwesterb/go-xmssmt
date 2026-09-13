@@ -22,6 +22,20 @@ func testWots(oid uint32, expectPk, expectSig, expectLeaf string, t *testing.T) 
 	if ctx == nil {
 		t.Fatalf("%d is not a valid oid", oid)
 	}
+	if ctx.p.Func != SHAKE || (ctx.p.N != 16 && ctx.p.N != 32) {
+		testWotsCtx(ctx, expectPk, expectSig, expectLeaf, t)
+		return
+	}
+	// Circl provides scalar fallbacks for the SIMD Keccak-f[1600]s, so we
+	// can check the unvectorized, two-way and four-way paths everywhere.
+	for _, ways := range []uint32{0, 2, 4} {
+		ctx.ways = ways
+		testWotsCtx(ctx, expectPk, expectSig, expectLeaf, t)
+	}
+}
+
+func testWotsCtx(ctx *Context, expectPk, expectSig, expectLeaf string,
+	t *testing.T) {
 	pubSeed := make([]byte, ctx.p.N)
 	skSeed := make([]byte, ctx.p.N)
 	msg := make([]byte, ctx.p.N)
@@ -40,21 +54,21 @@ func testWots(oid uint32, expectPk, expectSig, expectLeaf string, t *testing.T) 
 	pk := ctx.wotsPkGen(pad, ph, address(addr))
 	got := refHash(pk)
 	if got != expectPk {
-		t.Errorf("%s hash of wotsPkGen is %s instead of %s",
-			ctx.Name(), got, expectPk)
+		t.Errorf("%s (ways=%d) hash of wotsPkGen is %s instead of %s",
+			ctx.Name(), ctx.ways, got, expectPk)
 	}
 
 	sig := ctx.wotsSign(pad, msg, pubSeed, skSeed, address(addr))
 	got = refHash(sig)
 	if got != expectSig {
-		t.Errorf("%s hash of wotsSign is %s instead of %s",
-			ctx.Name(), got, expectSig)
+		t.Errorf("%s (ways=%d) hash of wotsSign is %s instead of %s",
+			ctx.Name(), ctx.ways, got, expectSig)
 	}
 
 	pk2 := ctx.wotsPkFromSig(pad, sig, msg, ph, address(addr))
 	if !bytes.Equal(pk2, pk) {
-		t.Errorf("%s public key derived from signature does not match original",
-			ctx.Name())
+		t.Errorf("%s (ways=%d) public key derived from signature does not match original",
+			ctx.Name(), ctx.ways)
 	}
 
 	leaf := make([]byte, ctx.p.N)

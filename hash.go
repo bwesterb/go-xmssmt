@@ -10,7 +10,7 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/bwesterb/go-xmssmt/internal/f1600x4"
+	"github.com/cloudflare/circl/simd/keccakf1600"
 	"github.com/templexxx/xorsimd"
 	"golang.org/x/crypto/sha3"
 )
@@ -41,11 +41,21 @@ type precomputedHashes struct {
 
 // Contains preallocated hashes to prevent allocation.  See scratchPad.
 type hashScratchPad struct {
-	h        hash.Hash
-	hV       reflect.Value
-	shake    sha3.ShakeHash
-	shakeX4  *f1600x4.State
-	shakeX4A []uint64
+	h       hash.Hash
+	hV      reflect.Value
+	shake   sha3.ShakeHash
+	shakeX4 *keccakf1600.StateX4
+	shakeX2 *keccakf1600.StateX2
+	shakeXA []uint64 // interleaved lanes of shakeX4 or shakeX2
+}
+
+// Runs the parallel Keccak-f[1600] on the lanes in shakeXA.
+func (pad hashScratchPad) permuteX() {
+	if pad.shakeX4 != nil {
+		pad.shakeX4.Permute()
+	} else {
+		pad.shakeX2.Permute()
+	}
 }
 
 func (ctx *Context) precomputeHashes(pubSeed, skSeed []byte) (
@@ -217,79 +227,81 @@ func (ctx *Context) prfAddrInto(pad scratchPad, addr address, key, out []byte) {
 	ctx.hashInto(pad, buf[:n+pl+32], out)
 }
 
-// Set out[i] = PRF(key, addr[i]) for i=0,1,2,3.
+// Set out[i] = PRF(key, addr[i]) for i < ctx.ways.
 //
-// Assumes SHAKE with N either 16 or 32 and f1600x4.Available is true.
-func (ctx *Context) prfAddrX4Into(pad scratchPad, addr [4]address, key []byte,
+// Assumes SHAKE with N either 16 or 32 and ctx.ways is 2 or 4.  Lanes j with
+// out[j] (resp. in[j]) set to nil are skipped.
+func (ctx *Context) prfAddrXInto(pad scratchPad, addr [4]address, key []byte,
 	out [4][]byte) {
 	// We're computing hash( HASH_PADDING_PRF ‖ key ‖ addr ).
-	a := pad.hash.shakeX4A
-	pad.hash.shakeX4.Zero()
+	a := pad.hash.shakeXA
+	w := int(ctx.ways)
+	clear(a)
 	if ctx.p.N == 16 {
-		for j := 0; j < 4; j++ {
+		for j := 0; j < w; j++ {
 			if out[j] == nil {
 				continue
 			}
 
-			a[4+j] = HASH_PADDING_PRF << 56
-			a[4*2+j] = binary.LittleEndian.Uint64(key[:8])
-			a[4*3+j] = binary.LittleEndian.Uint64(key[8:])
+			a[w+j] = HASH_PADDING_PRF << 56
+			a[w*2+j] = binary.LittleEndian.Uint64(key[:8])
+			a[w*3+j] = binary.LittleEndian.Uint64(key[8:])
 
 			var buf [8]byte
 			for i := 0; i < 4; i++ {
 				binary.BigEndian.PutUint32(buf[:4], addr[j][2*i])
 				binary.BigEndian.PutUint32(buf[4:], addr[j][2*i+1])
-				a[4*(4+i)+j] = binary.LittleEndian.Uint64(buf[:])
+				a[w*(4+i)+j] = binary.LittleEndian.Uint64(buf[:])
 			}
 
 			// SHAKE128 domain separator (0b1111) and padding (0b100...001).
-			a[4*8+j] = 0x1f
-			a[4*20+j] = 0x80 << 56
+			a[w*8+j] = 0x1f
+			a[w*20+j] = 0x80 << 56
 		}
 
-		pad.hash.shakeX4.Permute()
+		pad.hash.permuteX()
 
-		for j := 0; j < 4; j++ {
+		for j := 0; j < w; j++ {
 			if out[j] == nil {
 				continue
 			}
 			binary.LittleEndian.PutUint64(out[j][0:8], a[j])
-			binary.LittleEndian.PutUint64(out[j][8:16], a[4+j])
+			binary.LittleEndian.PutUint64(out[j][8:16], a[w+j])
 		}
 	} else if ctx.p.N == 32 {
-		for j := 0; j < 4; j++ {
+		for j := 0; j < w; j++ {
 			if out[j] == nil {
 				continue
 			}
 
-			a[4*3+j] = HASH_PADDING_PRF << 56
-			a[4*4+j] = binary.LittleEndian.Uint64(key[:8])
-			a[4*5+j] = binary.LittleEndian.Uint64(key[8:16])
-			a[4*6+j] = binary.LittleEndian.Uint64(key[16:24])
-			a[4*7+j] = binary.LittleEndian.Uint64(key[24:32])
+			a[w*3+j] = HASH_PADDING_PRF << 56
+			a[w*4+j] = binary.LittleEndian.Uint64(key[:8])
+			a[w*5+j] = binary.LittleEndian.Uint64(key[8:16])
+			a[w*6+j] = binary.LittleEndian.Uint64(key[16:24])
+			a[w*7+j] = binary.LittleEndian.Uint64(key[24:32])
 
 			var buf [8]byte
 			for i := 0; i < 4; i++ {
 				binary.BigEndian.PutUint32(buf[:4], addr[j][2*i])
 				binary.BigEndian.PutUint32(buf[4:], addr[j][2*i+1])
-				a[4*(8+i)+j] = binary.LittleEndian.Uint64(buf[:])
+				a[w*(8+i)+j] = binary.LittleEndian.Uint64(buf[:])
 			}
 
 			// SHAKE128 domain separator (0b1111) and padding (0b100...001).
-			a[4*12+j] = 0x1f
-			a[4*20+j] = 0x80 << 56
+			a[w*12+j] = 0x1f
+			a[w*20+j] = 0x80 << 56
 		}
 
-		pad.hash.shakeX4.Permute()
+		pad.hash.permuteX()
 
-		for j := 0; j < 4; j++ {
+		for j := 0; j < w; j++ {
 			if out[j] == nil {
 				continue
 			}
 			binary.LittleEndian.PutUint64(out[j][0:8], a[j])
-			binary.LittleEndian.PutUint64(out[j][8:16], a[4+j])
-			binary.LittleEndian.PutUint64(out[j][16:24], a[8+j])
-			binary.LittleEndian.PutUint64(out[j][24:32], a[12+j])
+			binary.LittleEndian.PutUint64(out[j][8:16], a[w+j])
+			binary.LittleEndian.PutUint64(out[j][16:24], a[w*2+j])
+			binary.LittleEndian.PutUint64(out[j][24:32], a[w*3+j])
 		}
 	} else {
 		panic("not implemented")
@@ -360,91 +372,93 @@ func (ctx *Context) f(in, pubSeed []byte, addr address) []byte {
 	return ret
 }
 
-// Set out[i] = f(addr[i], key, in[i]) for i=0,1,2,3.
+// Set out[i] = f(addr[i], key, in[i]) for i < ctx.ways.
 //
-// Assumes SHAKE with N either 16 or 32 and f1600x4.Available is true.
-func (ctx *Context) fX4Into(pad scratchPad, in [4][]byte, key []byte,
+// Assumes SHAKE with N either 16 or 32 and ctx.ways is 2 or 4.  Lanes j with
+// out[j] (resp. in[j]) set to nil are skipped.
+func (ctx *Context) fXInto(pad scratchPad, in [4][]byte, key []byte,
 	addr [4]address, out [4][]byte) {
-	buf := pad.fX4Buf()
+	buf := pad.fXBuf()
 	n := ctx.p.N
 	for j := 0; j < 4; j++ {
 		addr[j].setKeyAndMask(0)
 	}
-	ctx.prfAddrX4Into(pad, addr, key, [4][]byte{
+	ctx.prfAddrXInto(pad, addr, key, [4][]byte{
 		buf[0:n], buf[n : 2*n],
 		buf[2*n : 3*n], buf[3*n : 4*n],
 	})
 	for j := 0; j < 4; j++ {
 		addr[j].setKeyAndMask(1)
 	}
-	ctx.prfAddrX4Into(pad, addr, key, [4][]byte{
+	ctx.prfAddrXInto(pad, addr, key, [4][]byte{
 		buf[4*n : 5*n], buf[5*n : 6*n],
 		buf[6*n : 7*n], buf[7*n : 8*n],
 	})
 
-	a := pad.hash.shakeX4A
-	pad.hash.shakeX4.Zero()
+	a := pad.hash.shakeXA
+	w := int(ctx.ways)
+	clear(a)
 	if ctx.p.N == 16 {
-		for j := 0; j < 4; j++ {
+		for j := 0; j < w; j++ {
 			if in[j] == nil {
 				continue
 			}
 
-			a[4*2+j] = binary.LittleEndian.Uint64(buf[j*16 : j*16+8])
-			a[4*3+j] = binary.LittleEndian.Uint64(buf[j*16+8 : j*16+16])
-			a[4*4+j] = (binary.LittleEndian.Uint64(buf[j*16+64:j*16+72]) ^
+			a[w*2+j] = binary.LittleEndian.Uint64(buf[j*16 : j*16+8])
+			a[w*3+j] = binary.LittleEndian.Uint64(buf[j*16+8 : j*16+16])
+			a[w*4+j] = (binary.LittleEndian.Uint64(buf[j*16+64:j*16+72]) ^
 				binary.LittleEndian.Uint64(in[j][:8]))
-			a[4*5+j] = (binary.LittleEndian.Uint64(buf[j*16+72:j*16+80]) ^
+			a[w*5+j] = (binary.LittleEndian.Uint64(buf[j*16+72:j*16+80]) ^
 				binary.LittleEndian.Uint64(in[j][8:]))
 
 			// SHAKE128 domain separator (0b1111) and padding (0b100...001).
-			a[4*6+j] = 0x1f
-			a[4*20+j] = 0x80 << 56
+			a[w*6+j] = 0x1f
+			a[w*20+j] = 0x80 << 56
 		}
 
-		pad.hash.shakeX4.Permute()
+		pad.hash.permuteX()
 
-		for j := 0; j < 4; j++ {
+		for j := 0; j < w; j++ {
 			if in[j] == nil {
 				continue
 			}
 			binary.LittleEndian.PutUint64(out[j][0:8], a[j])
-			binary.LittleEndian.PutUint64(out[j][8:16], a[4+j])
+			binary.LittleEndian.PutUint64(out[j][8:16], a[w+j])
 		}
 	} else if ctx.p.N == 32 {
-		for j := 0; j < 4; j++ {
+		for j := 0; j < w; j++ {
 			if in[j] == nil {
 				continue
 			}
 
-			a[4*4+j] = binary.LittleEndian.Uint64(buf[j*32 : j*32+8])
-			a[4*5+j] = binary.LittleEndian.Uint64(buf[j*32+8 : j*32+16])
-			a[4*6+j] = binary.LittleEndian.Uint64(buf[j*32+16 : j*32+24])
-			a[4*7+j] = binary.LittleEndian.Uint64(buf[j*32+24 : j*32+32])
-			a[4*8+j] = (binary.LittleEndian.Uint64(buf[j*32+128:j*32+136]) ^
+			a[w*4+j] = binary.LittleEndian.Uint64(buf[j*32 : j*32+8])
+			a[w*5+j] = binary.LittleEndian.Uint64(buf[j*32+8 : j*32+16])
+			a[w*6+j] = binary.LittleEndian.Uint64(buf[j*32+16 : j*32+24])
+			a[w*7+j] = binary.LittleEndian.Uint64(buf[j*32+24 : j*32+32])
+			a[w*8+j] = (binary.LittleEndian.Uint64(buf[j*32+128:j*32+136]) ^
 				binary.LittleEndian.Uint64(in[j][:8]))
-			a[4*9+j] = (binary.LittleEndian.Uint64(buf[j*32+136:j*32+144]) ^
+			a[w*9+j] = (binary.LittleEndian.Uint64(buf[j*32+136:j*32+144]) ^
 				binary.LittleEndian.Uint64(in[j][8:16]))
-			a[4*10+j] = (binary.LittleEndian.Uint64(buf[j*32+144:j*32+152]) ^
+			a[w*10+j] = (binary.LittleEndian.Uint64(buf[j*32+144:j*32+152]) ^
 				binary.LittleEndian.Uint64(in[j][16:24]))
-			a[4*11+j] = (binary.LittleEndian.Uint64(buf[j*32+152:j*32+160]) ^
+			a[w*11+j] = (binary.LittleEndian.Uint64(buf[j*32+152:j*32+160]) ^
 				binary.LittleEndian.Uint64(in[j][24:32]))
 
 			// SHAKE128 domain separator (0b1111) and padding (0b100...001).
-			a[4*12+j] = 0x1f
-			a[4*20+j] = 0x80 << 56
+			a[w*12+j] = 0x1f
+			a[w*20+j] = 0x80 << 56
 		}
 
-		pad.hash.shakeX4.Permute()
+		pad.hash.permuteX()
 
-		for j := 0; j < 4; j++ {
+		for j := 0; j < w; j++ {
 			if in[j] == nil {
 				continue
 			}
 			binary.LittleEndian.PutUint64(out[j][0:8], a[j])
-			binary.LittleEndian.PutUint64(out[j][8:16], a[4+j])
-			binary.LittleEndian.PutUint64(out[j][16:24], a[8+j])
-			binary.LittleEndian.PutUint64(out[j][24:32], a[12+j])
+			binary.LittleEndian.PutUint64(out[j][8:16], a[w+j])
+			binary.LittleEndian.PutUint64(out[j][16:24], a[w*2+j])
+			binary.LittleEndian.PutUint64(out[j][24:32], a[w*3+j])
 		}
 	} else {
 		panic("not implemented")
@@ -506,9 +520,13 @@ func (ctx *Context) newHashScratchPad() (pad hashScratchPad) {
 		switch ctx.p.N {
 		case 16, 24, 32:
 			pad.shake = sha3.NewShake128()
-			if f1600x4.Available {
-				pad.shakeX4 = new(f1600x4.State)
-				pad.shakeX4A = pad.shakeX4.Initialize()
+			switch ctx.ways {
+			case 4:
+				pad.shakeX4 = new(keccakf1600.StateX4)
+				pad.shakeXA = pad.shakeX4.Initialize(false)
+			case 2:
+				pad.shakeX2 = new(keccakf1600.StateX2)
+				pad.shakeXA = pad.shakeX2.Initialize(false)
 			}
 		case 64:
 			pad.shake = sha3.NewShake256()

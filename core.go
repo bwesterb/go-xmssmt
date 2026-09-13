@@ -481,7 +481,7 @@ func (pad scratchPad) wotsBuf() []byte {
 	return pad.buf[11*pad.n+64 : (11+pad.wotsLen)*pad.n+64]
 }
 
-func (pad scratchPad) fX4Buf() []byte {
+func (pad scratchPad) fXBuf() []byte {
 	return pad.buf[(11+pad.wotsLen)*pad.n+64:]
 }
 

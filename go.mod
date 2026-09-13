@@ -3,6 +3,7 @@ module github.com/bwesterb/go-xmssmt
 require (
 	github.com/bwesterb/byteswriter v1.0.0
 	github.com/cespare/xxhash v1.1.0
+	github.com/cloudflare/circl v1.6.5
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/nightlyone/lockfile v1.0.0

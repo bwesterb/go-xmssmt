@@ -14,7 +14,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/bwesterb/go-xmssmt/internal/f1600x4"
+	"github.com/cloudflare/circl/simd/keccakf1600"
 )
 
 // XMSS[MT] instance.
@@ -37,7 +37,7 @@ type Context struct {
 	skBytes      uint32 // size of secret key
 	prefixLen    uint32 // length of PRF prefix
 
-	x4Available bool // whether fourway hashes are available
+	ways uint32 // number of SHAKE lanes hashed in parallel: 0, 2 or 4
 
 	mt   bool    // true for XMSSMT; false for XMSS
 	oid  uint32  // OID of this configuration, if it has any
@@ -694,7 +694,11 @@ func NewContext(params Params) (ctx *Context, err Error) {
 	}
 
 	if ctx.p.Func == SHAKE && (ctx.p.N == 32 || ctx.p.N == 16) {
-		ctx.x4Available = f1600x4.Available
+		if keccakf1600.IsEnabledX4() {
+			ctx.ways = 4
+		} else if keccakf1600.IsEnabledX2() {
+			ctx.ways = 2
+		}
 	}
 
 	return
