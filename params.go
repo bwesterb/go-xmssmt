@@ -169,16 +169,16 @@ var registry []regEntry = []regEntry{
 
 // Encodes parameters in the reserved Oid space as follows (big endian).
 //
-//    8-bit magic         should be 0xEA
-//    3-bit version       should be 0
-//    1-bit prf           0 for RFC and 1 for NIST
-//    4-bit compr-n       contains (n/8)-1 for the parameter n
-//    2-bit hash          the hash function
-//    2-bit w             0 for WotsW=4, 1 for WotsW=16, 2 for WotsW=256
-//    6-bit full-height   the full height parameter
-//    6-bit d             the parameter d
+//	  8-bit magic         should be 0xEA
+//	  3-bit version       should be 0
+//	  1-bit prf           0 for RFC and 1 for NIST
+//	  4-bit compr-n       contains (n/8)-1 for the parameter n
+//	  2-bit hash          the hash function
+//	  2-bit w             0 for WotsW=4, 1 for WotsW=16, 2 for WotsW=256
+//	  6-bit full-height   the full height parameter
+//	  6-bit d             the parameter d
 //
-//  We assume XMSS if d == 1 and XMSSMT otherwise.
+//	We assume XMSS if d == 1 and XMSSMT otherwise.
 func (params *Params) MarshalBinary() ([]byte, error) {
 	ret := make([]byte, 4)
 	err := params.WriteInto(ret)
@@ -292,7 +292,8 @@ func (params *Params) CachedSubTreeSize() int {
 
 // Size of the private key as stored by PrivateKeyContainer.
 // NOTE this is not equal to the privateKeySize of the spec, which includes
-//      the signature sequence number, OID and root
+//
+//	the signature sequence number, OID and root
 func (params *Params) PrivateKeySize() int {
 	return int(params.N * 3) // skSeed + skPrf + pubSeed
 }

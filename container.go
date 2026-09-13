@@ -90,9 +90,9 @@ type mmapedSubTree struct {
 
 // PrivateKeyContainer backed by three files:
 //
-//   path/to/key        contains the secret key and signature sequence number
-//   path/to/key.lock   a lockfile
-//   path/to/key.cache  cached subtrees
+//	path/to/key        contains the secret key and signature sequence number
+//	path/to/key.lock   a lockfile
+//	path/to/key.cache  cached subtrees
 type fsContainer struct {
 	// Fields relevant to a container, initialized or not
 	flock            lockfile.Lockfile // file lock

@@ -13,13 +13,13 @@ import (
 
 // Represents a height t merkle tree of n-byte strings T[i,j] as
 //
-//                    T[t-1,0]
-//                 /
-//               (...)        (...)
-//            /           \            \
-//         T[1,0]        T[1,1]  ...  T[1,2^(t-2)-1]
-//        /     \       /      \          \
-//     T[0,0] T[0,1] T[0,2]  T[0,3]  ...  T[0,2^(t-1)-1]
+//	               T[t-1,0]
+//	            /
+//	          (...)        (...)
+//	       /           \            \
+//	    T[1,0]        T[1,1]  ...  T[1,2^(t-2)-1]
+//	   /     \       /      \          \
+//	T[0,0] T[0,1] T[0,2]  T[0,3]  ...  T[0,2^(t-1)-1]
 //
 // as an (2^t-1)*n byte array.
 type merkleTree struct {

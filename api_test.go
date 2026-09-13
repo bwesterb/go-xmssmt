@@ -71,8 +71,9 @@ func testXMSS(t *testing.T, mt bool, oid uint32, expectPk, expectSig string) {
 
 // For testing we use the following XMSSMT-SHA2_60/12_256 keypair,
 // formatted as accepted by the core functions of the reference implementation
-//    pk: ac655131aacd5dd041b093c7dcadd70269f8cdd6afddd4dbc52d1628f5087cb45335890d5d174a65c2bb19eb301ae9c3201842c4d710a3f820fc735860646a51
-//    sk: 0000000000000000b9fcdb4826ceef80b10245650bdea01b5672f5695249b04a95abf2d33363d465f01cfb56df61b7e0a2f3d7fd6bc2b4f8426404f610192f06cce1b37ac9033d515335890d5d174a65c2bb19eb301ae9c3201842c4d710a3f820fc735860646a51ac655131aacd5dd041b093c7dcadd70269f8cdd6afddd4dbc52d1628f5087cb4
+//
+//	pk: ac655131aacd5dd041b093c7dcadd70269f8cdd6afddd4dbc52d1628f5087cb45335890d5d174a65c2bb19eb301ae9c3201842c4d710a3f820fc735860646a51
+//	sk: 0000000000000000b9fcdb4826ceef80b10245650bdea01b5672f5695249b04a95abf2d33363d465f01cfb56df61b7e0a2f3d7fd6bc2b4f8426404f610192f06cce1b37ac9033d515335890d5d174a65c2bb19eb301ae9c3201842c4d710a3f820fc735860646a51ac655131aacd5dd041b093c7dcadd70269f8cdd6afddd4dbc52d1628f5087cb4
 func TestDeriveSignVerify(t *testing.T) {
 	SetLogger(t)
 	defer SetLogger(nil)
