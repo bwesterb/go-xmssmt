@@ -6,9 +6,9 @@ require (
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/nightlyone/lockfile v1.0.0
-	github.com/templexxx/xorsimd v0.4.3
-	golang.org/x/crypto v0.47.0
-	golang.org/x/sys v0.40.0
+	github.com/templexxx/xorsimd v0.4.4
+	golang.org/x/crypto v0.57.0
+	golang.org/x/sys v0.48.0
 )
 
 require (
@@ -16,4 +16,4 @@ require (
 	github.com/templexxx/cpu v0.1.1 // indirect
 )
 
-go 1.24.0
+go 1.26.0
