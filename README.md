@@ -76,6 +76,9 @@ by the RFC by checking `Context.FromRFC()` and `Context.FromNIST()`.
 Changes
 -------
 
+### 1.6.1 (13-9-2026)
+- Actually fix mmap of the subtree cache on Windows.
+
 ### 1.6.0 (13-9-2026)
 - Fixed a **security** and **compatibility** issue with non-standard
   instances with either
