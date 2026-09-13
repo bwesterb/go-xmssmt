@@ -267,3 +267,34 @@ func benchmarkWotsPkGen(b *testing.B, sha bool, N uint32, WotsW uint16) {
 		ctx.wotsPkGenInto(pad, ph, address(addr), out)
 	}
 }
+
+// Checks that the checksum chain lengths are the proper base w encoding
+// of the checksum for every supported instance.  This catches the missing
+// outer modulo in the checksum shift, which zeroed a byte of the checksum
+// for w=256 and w=4 with n=16.
+func TestWotsChecksum(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	for _, name := range ListNames2() {
+		ctx, err := NewContextFromName2(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := uint32(ctx.p.WotsW)
+		msg := make([]byte, ctx.p.N)
+		for trial := 0; trial < 20; trial++ {
+			rng.Read(msg)
+			lengths := ctx.wotsChainLengths(msg)
+			var csum, got uint32
+			for i := 0; i < int(ctx.wotsLen1); i++ {
+				csum += w - 1 - uint32(lengths[i])
+			}
+			for _, d := range lengths[ctx.wotsLen1:] {
+				got = got*w + uint32(d)
+			}
+			if got != csum {
+				t.Fatalf("%s: checksum digits %v encode %d, but checksum is %d",
+					name, lengths[ctx.wotsLen1:], got, csum)
+			}
+		}
+	}
+}

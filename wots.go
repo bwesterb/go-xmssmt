@@ -32,7 +32,7 @@ func (ctx *Context) wotsChainLengths(msg []byte) []uint8 {
 	for i := 0; i < int(ctx.wotsLen1); i++ {
 		csum += uint32(ctx.p.WotsW) - 1 - uint32(ret[i])
 	}
-	csum = csum << (8 - ((ctx.wotsLen2 * uint32(ctx.wotsLogW)) % 8))
+	csum = csum << ((8 - ((ctx.wotsLen2 * uint32(ctx.wotsLogW)) % 8)) % 8)
 
 	// put checksum in buffer
 	ctx.toBaseW(
