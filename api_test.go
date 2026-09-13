@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestXMSS(t *testing.T) {
@@ -291,5 +292,37 @@ func TestPrivateKeyContainer(t *testing.T) {
 	testSignThenVerify(sk2, pk2, t)
 	if err = sk2.Close(); err != nil {
 		t.Fatalf("sk2.Close(): %v", err)
+	}
+}
+
+// Close() used to deadlock when a subtree precomputation was in flight,
+// as it held sk.mux while waiting for the goroutine, which needs sk.mux.
+func TestClosePrecomputation(t *testing.T) {
+	SetLogger(t)
+	defer SetLogger(nil)
+
+	dir, err := ioutil.TempDir("", "go-xmssmt-tests")
+	if err != nil {
+		t.Fatalf("TempDir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	ctx := NewContextFromName("XMSSMT-SHA2_20/2_256")
+	sk, _, err := ctx.GenerateKeyPair(dir + "/key")
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(): %v", err)
+	}
+
+	sk.EnableSubTreePrecomputation()
+
+	done := make(chan Error, 1)
+	go func() { done <- sk.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("sk.Close(): %v", err)
+		}
+	case <-time.After(60 * time.Second):
+		t.Fatalf("sk.Close() did not return in 60 seconds")
 	}
 }

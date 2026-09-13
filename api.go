@@ -580,6 +580,12 @@ func (sk *PrivateKey) SignFrom(msg io.Reader) (*Signature, Error) {
 
 // Close the underlying container
 func (sk *PrivateKey) Close() Error {
+	// There might be a background goroutine generating a subtree
+	// when EnableSubTreePrecomputation() was called.  Wait for it before
+	// closing the container it writes into.  Don't hold sk.mux while
+	// waiting: the goroutine needs it to mark the subtree ready.
+	sk.wg.Wait()
+
 	sk.mux.Lock()
 	defer sk.mux.Unlock()
 	if sk.borrowed > 0 {
@@ -591,11 +597,6 @@ func (sk *PrivateKey) Close() Error {
 	}
 	err := sk.ctr.Close()
 	sk.cond.Broadcast()
-
-	// There might be a background goroutine generating a subtree
-	// when EnableSubTreePrecomputation() was called.  So wait for that.
-	sk.wg.Wait()
-
 	return err
 }
 
