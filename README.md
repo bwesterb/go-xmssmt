@@ -76,7 +76,7 @@ by the RFC by checking `Context.FromRFC()` and `Context.FromNIST()`.
 Changes
 -------
 
-### Unreleased
+### 1.6.0 (13-9-2026)
 - Fixed a **security** and **compatibility** issue with non-standard
   instances with either
 
@@ -103,6 +103,12 @@ Changes
   with sequence numbers before the fix is deployed.
 
   Reported by Conner Webber (github.com/spartan8806).
+- Fixed a deadlock in `PrivateKey.Close()` when a subtree was being
+  precomputed in the background after `EnableSubTreePrecomputation()`.
+  Reported by Conner Webber.
+- Fixed creating keys in the filesystem container on Windows.
+  Reported by Conner Webber.
+- Test against recent versions of Go and on Windows in CI.
 
 ### 1.5.2 (5-7-2022)
 - Fix build problems on 32-bit platforms. Thanks @sietseringers.
