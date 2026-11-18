@@ -271,7 +271,13 @@ func (sig *Signature) MarshalBinary() ([]byte, error) {
 }
 
 // Initializes the Signature as stored by MarshalBinary.
+//
+// buf must be exactly the marshaled length. Earlier versions silently
+// accepted (and ignored) trailing bytes; this now returns an error.
 func (sig *Signature) UnmarshalBinary(buf []byte) error {
+	if len(buf) < 4 {
+		return errorf("Signature is too short: %d bytes", len(buf))
+	}
 	var params Params
 	err := params.UnmarshalBinary(buf[:4])
 	if err != nil {
@@ -280,6 +286,10 @@ func (sig *Signature) UnmarshalBinary(buf []byte) error {
 	sig.ctx, err = NewContext(params)
 	if err != nil {
 		return err
+	}
+	if uint32(len(buf)) != 4+sig.ctx.sigBytes {
+		return errorf("Signature has wrong length: got %d, expected %d",
+			len(buf), 4+sig.ctx.sigBytes)
 	}
 	sig.seqNo = SignatureSeqNo(decodeUint64(buf[4 : 4+sig.ctx.indexBytes]))
 	sig.drv = make([]byte, params.N)
@@ -368,7 +378,13 @@ func (pk *PublicKey) MarshalBinary() ([]byte, error) {
 }
 
 // Initializes the PublicKey as was stored by MarshalBinary.
+//
+// buf must be exactly the marshaled length. Earlier versions silently
+// accepted (and ignored) trailing bytes; this now returns an error.
 func (pk *PublicKey) UnmarshalBinary(buf []byte) error {
+	if len(buf) < 4 {
+		return errorf("Public key is too short: %d bytes", len(buf))
+	}
 	var params Params
 	err := params.UnmarshalBinary(buf[:4])
 	if err != nil {
@@ -377,6 +393,10 @@ func (pk *PublicKey) UnmarshalBinary(buf []byte) error {
 	pk.ctx, err = NewContext(params)
 	if err != nil {
 		return err
+	}
+	if uint32(len(buf)) != 4+2*params.N {
+		return errorf("Public key has wrong length: got %d, expected %d",
+			len(buf), 4+2*params.N)
 	}
 	pk.root = make([]byte, params.N)
 	pk.pubSeed = make([]byte, params.N)
