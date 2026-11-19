@@ -86,6 +86,7 @@ Changes
 - Use the parallel Keccak-f[1600] from [cloudflare/circl](https://github.com/cloudflare/circl)
   instead of a vendored copy.
 - Use two-way SHAKE when supported on the platform.
+- Reduced dependencies.
 
 ### 1.6.1 (13-9-2026)
 - Actually fix mmap of the subtree cache on Windows.
