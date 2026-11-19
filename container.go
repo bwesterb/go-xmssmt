@@ -4,13 +4,13 @@ import (
 	"container/heap"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/bwesterb/byteswriter"
 	"github.com/edsrzf/mmap-go"
-	"github.com/hashicorp/go-multierror"
 	"github.com/nightlyone/lockfile"
 )
 
@@ -682,7 +682,7 @@ func (ctr *fsContainer) closeCache() (err error) {
 	if ctr.cacheBufLut != nil {
 		for _, buf := range ctr.cacheBufLut {
 			if err2 := buf.mmap.Unmap(); err2 != nil {
-				err = multierror.Append(err, wrapErrorf(err2,
+				err = errors.Join(err, wrapErrorf(err2,
 					"Failed to unmap cached subtree"))
 			}
 		}
@@ -690,7 +690,7 @@ func (ctr *fsContainer) closeCache() (err error) {
 	}
 	if ctr.cacheFile != nil {
 		if err2 := ctr.cacheFile.Close(); err2 != nil {
-			err = multierror.Append(err, wrapErrorf(err2,
+			err = errors.Join(err, wrapErrorf(err2,
 				"Failed to close cache file"))
 		}
 		ctr.cacheFile = nil
@@ -701,11 +701,11 @@ func (ctr *fsContainer) closeCache() (err error) {
 func (ctr *fsContainer) Close() Error {
 	var err error
 	if err2 := ctr.closeCache(); err2 != nil {
-		err = multierror.Append(err, wrapErrorf(err2,
+		err = errors.Join(err, wrapErrorf(err2,
 			"Could not close cache"))
 	}
 	if err2 := ctr.flock.Unlock(); err2 != nil {
-		err = multierror.Append(err, wrapErrorf(err2,
+		err = errors.Join(err, wrapErrorf(err2,
 			"Could not release file lock"))
 	}
 	ctr.closed = true

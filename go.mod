@@ -6,12 +6,9 @@ require (
 	github.com/cespare/xxhash v1.1.0
 	github.com/cloudflare/circl v1.6.5
 	github.com/edsrzf/mmap-go v1.2.0
-	github.com/hashicorp/go-multierror v1.1.1
 	github.com/nightlyone/lockfile v1.0.0
 	golang.org/x/crypto v0.59.0
 	golang.org/x/sys v0.50.0
 )
-
-require github.com/hashicorp/errwrap v1.1.0 // indirect
 
 go 1.26.0
