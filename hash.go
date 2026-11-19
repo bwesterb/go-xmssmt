@@ -10,8 +10,8 @@ import (
 	"io"
 	"reflect"
 
+	"github.com/bwesterb/go-and"
 	"github.com/cloudflare/circl/simd/keccakf1600"
-	"github.com/templexxx/xorsimd"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -476,7 +476,7 @@ func (ctx *Context) fInto(pad scratchPad, in []byte, ph precomputedHashes,
 	ph.prfAddrPubSeedInto(pad, addr, buf[pl:pl+n])
 	addr.setKeyAndMask(1)
 	ph.prfAddrPubSeedInto(pad, addr, buf[pl+n:pl+2*n])
-	xorsimd.Bytes(buf[pl+n:pl+2*n], in, buf[pl+n:pl+2*n])
+	and.Xor(buf[pl+n:pl+2*n], in, buf[pl+n:pl+2*n])
 	ctx.hashInto(pad, buf[:pl+2*n], out)
 }
 
@@ -501,8 +501,8 @@ func (ctx *Context) hInto(pad scratchPad, left, right []byte,
 	ph.prfAddrPubSeedInto(pad, addr, buf[pl+n:pl+2*n])
 	addr.setKeyAndMask(2)
 	ph.prfAddrPubSeedInto(pad, addr, buf[2*n+pl:3*n+pl])
-	xorsimd.Bytes(buf[pl+n:pl+2*n], left, buf[pl+n:pl+2*n])
-	xorsimd.Bytes(buf[pl+2*n:pl+3*n], right, buf[pl+2*n:pl+3*n])
+	and.Xor(buf[pl+n:pl+2*n], left, buf[pl+n:pl+2*n])
+	and.Xor(buf[pl+2*n:pl+3*n], right, buf[pl+2*n:pl+3*n])
 	ctx.hashInto(pad, buf[:pl+3*n], out)
 }
 
