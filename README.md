@@ -76,7 +76,7 @@ by the RFC by checking `Context.FromRFC()` and `Context.FromNIST()`.
 Changes
 -------
 
-### Unreleased
+### 1.6.2 (19-11-2026)
 - Fixed a **security** issue: `Signature.UnmarshalBinary` and
   `PublicKey.UnmarshalBinary` panicked with an out-of-bounds slice on malformed
   (too-short / truncated) input instead of returning an error. A crafted short
