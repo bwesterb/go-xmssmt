@@ -77,6 +77,12 @@ Changes
 -------
 
 ### Unreleased
+- Fixed a **security** issue: `Signature.UnmarshalBinary` and
+  `PublicKey.UnmarshalBinary` panicked with an out-of-bounds slice on malformed
+  (too-short / truncated) input instead of returning an error. A crafted short
+  signature or public key passed to `Verify` (or to the unmarshalers directly)
+  could crash the caller — a denial of service on untrusted input. They now
+  reject such input with an error.
 - Use the parallel Keccak-f[1600] from [cloudflare/circl](https://github.com/cloudflare/circl)
   instead of a vendored copy.
 - Use two-way SHAKE when supported on the platform.
