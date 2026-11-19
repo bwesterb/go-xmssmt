@@ -8,8 +8,8 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/nightlyone/lockfile v1.0.0
 	github.com/templexxx/xorsimd v0.4.4
-	golang.org/x/crypto v0.57.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/crypto v0.59.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
